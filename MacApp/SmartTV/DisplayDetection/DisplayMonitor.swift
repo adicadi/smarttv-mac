@@ -51,19 +51,18 @@ final class DisplayMonitor {
         return result
     }
 
-    /// The external screen to use if one is already attached at launch.
-    /// On Macs with no built-in display (mini/Studio) every screen is
-    /// "external"; in that case require a second screen before treating one
-    /// as the TV, and prefer the largest.
+    /// The external screen to use if one is already attached at launch;
+    /// largest wins if several. A clamshell MacBook reports *only* the
+    /// external screen (no built-in), so the mere absence of a built-in
+    /// display must not disqualify kiosk mode. Caveat: on a Mac mini/Studio
+    /// the desktop monitor is also "external", so the app kiosks at launch
+    /// there too — on such machines, use it as a dedicated TV box or add a
+    /// user-configured display choice.
     static func currentExternalScreen() -> NSScreen? {
-        let screens = NSScreen.screens
-        let externals = screens.filter { !$0.isBuiltin }
-        if externals.count == screens.count {
-            // No built-in display at all: only kiosk if there are 2+ screens.
-            guard screens.count > 1 else { return nil }
-        }
-        return externals.max { a, b in
-            a.frame.width * a.frame.height < b.frame.width * b.frame.height
-        }
+        NSScreen.screens
+            .filter { !$0.isBuiltin }
+            .max { a, b in
+                a.frame.width * a.frame.height < b.frame.width * b.frame.height
+            }
     }
 }
