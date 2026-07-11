@@ -12,17 +12,20 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import com.smarttv.remote.model.RemoteCommand
+import kotlin.math.abs
 
 /**
- * The remote control surface, built programmatically (no layout XML, no
- * androidx): status line, PIN entry (shown only while pairing), d-pad with
- * center select, back/home and volume rows, a trackpad area (one finger
- * moves the cursor, tap clicks, two fingers scroll), a text/keyboard row
- * and a voice-input button.
+ * Remote control surface, built programmatically (no layout XML, no androidx).
+ *
+ * Firestick-style circle pad: swiping on the circle sends discrete d-pad
+ * navigation steps, a single tap sends select. A separate full-screen
+ * "mouse mode" overlay turns the whole phone screen into a trackpad
+ * (one finger = cursor, tap = click, two fingers = scroll).
  */
 class RemotePadScreen(
     private val context: Context,
@@ -34,18 +37,20 @@ class RemotePadScreen(
     private lateinit var pinRow: LinearLayout
     private lateinit var pinInput: EditText
     private lateinit var padContainer: LinearLayout
+    private lateinit var mouseOverlay: FrameLayout
 
     fun createView(): View {
-        val scroll = ScrollView(context).apply {
+        val frame = FrameLayout(context).apply {
             setBackgroundColor(Color.parseColor("#101418"))
-            isFillViewport = true
         }
+        val scroll = ScrollView(context).apply { isFillViewport = true }
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(dp(24), dp(40), dp(24), dp(24))
         }
         scroll.addView(root)
+        frame.addView(scroll)
 
         statusView = TextView(context).apply {
             text = "Searching for SmartTV…"
@@ -70,7 +75,7 @@ class RemotePadScreen(
             minWidth = dp(140)
         }
         pinRow.addView(pinInput)
-        pinRow.addView(padButton("Pair") { onPinSubmit(pinInput.text.toString().trim()) })
+        pinRow.addView(smallButton("Pair") { onPinSubmit(pinInput.text.toString().trim()) })
         root.addView(pinRow, matchWrap(topMargin = dp(16)))
 
         padContainer = LinearLayout(context).apply {
@@ -79,89 +84,163 @@ class RemotePadScreen(
             alpha = 0.4f // dimmed until paired
         }
 
-        // D-pad: up / (left select right) / down
-        padContainer.addView(rowOf(padButton("▲") { onCommand(RemoteCommand.Navigate("up")) }), wrapWrap(topMargin = dp(32)))
-        padContainer.addView(
-            rowOf(
-                padButton("◀") { onCommand(RemoteCommand.Navigate("left")) },
-                padButton("OK", big = true) { onCommand(RemoteCommand.Select) },
-                padButton("▶") { onCommand(RemoteCommand.Navigate("right")) },
-            ),
-            wrapWrap()
-        )
-        padContainer.addView(rowOf(padButton("▼") { onCommand(RemoteCommand.Navigate("down")) }), wrapWrap())
+        // Firestick-style circle: swipe = navigate, tap = select.
+        padContainer.addView(sectionLabel("Swipe to move · tap to select"), matchWrap(topMargin = dp(24)))
+        padContainer.addView(buildCirclePad(), wrapWrap(topMargin = dp(8)))
 
-        // Back / Home
+        // Back / Home / Mouse mode
         padContainer.addView(
             rowOf(
-                padButton("Back") { onCommand(RemoteCommand.Back) },
-                padButton("Home") { onCommand(RemoteCommand.Home) },
+                smallButton("Back", dp(96)) { onCommand(RemoteCommand.Back) },
+                smallButton("Home", dp(96)) { onCommand(RemoteCommand.Home) },
+                smallButton("🖱 Mouse", dp(110)) { showMouseMode(true) },
             ),
-            wrapWrap(topMargin = dp(32))
+            wrapWrap(topMargin = dp(20))
         )
 
         // Volume
         padContainer.addView(
             rowOf(
-                padButton("Vol −") { onCommand(RemoteCommand.Volume("down")) },
-                padButton("Vol +") { onCommand(RemoteCommand.Volume("up")) },
+                smallButton("Vol −", dp(96)) { onCommand(RemoteCommand.Volume("down")) },
+                smallButton("Vol +", dp(96)) { onCommand(RemoteCommand.Volume("up")) },
             ),
-            wrapWrap(topMargin = dp(12))
+            wrapWrap(topMargin = dp(10))
         )
 
-        // Trackpad: one finger moves the cursor, tap clicks, two fingers scroll.
-        padContainer.addView(sectionLabel("Trackpad — tap to click, two fingers to scroll"), matchWrap(topMargin = dp(24)))
-        padContainer.addView(buildTrackpad(), matchWrap(topMargin = dp(8)))
-
-        // Keyboard row: free text + special keys.
-        padContainer.addView(sectionLabel("Keyboard"), matchWrap(topMargin = dp(20)))
+        // Keyboard row + voice input.
+        padContainer.addView(sectionLabel("Keyboard"), matchWrap(topMargin = dp(22)))
         padContainer.addView(buildKeyboardRow(), matchWrap(topMargin = dp(8)))
-
-        // Voice input (speech-to-text, sent as typed text).
         padContainer.addView(
-            rowOf(padButton("🎤 Speak", wide = true) { onVoiceRequest() }),
+            rowOf(smallButton("🎤 Speak", dp(200)) { onVoiceRequest() }),
             wrapWrap(topMargin = dp(12))
         )
 
         root.addView(padContainer, matchWrap())
-        return scroll
+
+        mouseOverlay = buildMouseOverlay()
+        frame.addView(
+            mouseOverlay,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+        return frame
     }
 
+    // MARK: circle pad (navigation)
+
     @SuppressLint("ClickableViewAccessibility")
-    private fun buildTrackpad(): View {
-        val pad = View(context).apply {
+    private fun buildCirclePad(): View {
+        val size = dp(260)
+        val pad = TextView(context).apply {
+            text = "OK"
+            setTextColor(Color.parseColor("#8899AA"))
+            textSize = 22f
+            gravity = Gravity.CENTER
             background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
                 setColor(Color.parseColor("#1C232B"))
-                cornerRadius = dp(16).toFloat()
+                setStroke(dp(2), Color.parseColor("#2E3944"))
             }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(200)
-            )
+            layoutParams = LinearLayout.LayoutParams(size, size)
         }
+        val step = dp(70).toFloat() // finger travel per navigation step
         val slop = ViewConfiguration.get(context).scaledTouchSlop
-        var lastX = 0f
-        var lastY = 0f
+        var startX = 0f; var startY = 0f
+        var accX = 0f; var accY = 0f
+        var stepped = false
         var downTime = 0L
-        var moved = false
-        var scrolling = false
         pad.setOnTouchListener { view, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    // Don't let the enclosing ScrollView steal the gesture.
                     view.parent.requestDisallowInterceptTouchEvent(true)
-                    lastX = event.x; lastY = event.y
+                    startX = event.x; startY = event.y
+                    accX = 0f; accY = 0f
+                    stepped = false
                     downTime = event.eventTime
-                    moved = false; scrolling = false
-                    true
-                }
-                MotionEvent.ACTION_POINTER_DOWN -> {
-                    scrolling = true
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
+                    accX = event.x - startX
+                    accY = event.y - startY
+                    // Each `step` of travel in the dominant axis fires one
+                    // discrete navigate and re-anchors, so a long swipe can
+                    // step several tiles.
+                    if (abs(accX) >= step || abs(accY) >= step) {
+                        val direction = if (abs(accX) > abs(accY)) {
+                            if (accX > 0) "right" else "left"
+                        } else {
+                            if (accY > 0) "down" else "up"
+                        }
+                        onCommand(RemoteCommand.Navigate(direction))
+                        stepped = true
+                        startX = event.x; startY = event.y
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    val moved = abs(event.x - startX) > slop || abs(event.y - startY) > slop
+                    if (!stepped && !moved && event.eventTime - downTime < TAP_TIMEOUT_MS) {
+                        onCommand(RemoteCommand.Select)
+                    }
+                    true
+                }
+                else -> true
+            }
+        }
+        return pad
+    }
+
+    // MARK: full-screen mouse mode
+
+    @SuppressLint("ClickableViewAccessibility")
+    private fun buildMouseOverlay(): FrameLayout {
+        val overlay = FrameLayout(context).apply {
+            setBackgroundColor(Color.parseColor("#EE0B0E12"))
+            visibility = View.GONE
+        }
+        val hint = TextView(context).apply {
+            text = "Mouse mode\nmove finger = cursor · tap = click · two fingers = scroll"
+            setTextColor(Color.parseColor("#66707A"))
+            textSize = 14f
+            gravity = Gravity.CENTER
+        }
+        overlay.addView(
+            hint,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER
+            )
+        )
+        val exit = smallButton("✕ Exit", dp(110)) { showMouseMode(false) }
+        overlay.addView(
+            exit,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP or Gravity.END
+            ).apply { setMargins(0, dp(40), dp(20), 0) }
+        )
+
+        val slop = ViewConfiguration.get(context).scaledTouchSlop
+        var lastX = 0f; var lastY = 0f
+        var moved = false; var scrolling = false
+        var downTime = 0L
+        overlay.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    lastX = event.x; lastY = event.y
+                    moved = false; scrolling = false
+                    downTime = event.eventTime
+                    true
+                }
+                MotionEvent.ACTION_POINTER_DOWN -> { scrolling = true; true }
+                MotionEvent.ACTION_MOVE -> {
                     val dx = event.x - lastX
                     val dy = event.y - lastY
-                    if (!moved && (Math.abs(dx) > slop || Math.abs(dy) > slop)) moved = true
+                    if (!moved && (abs(dx) > slop || abs(dy) > slop)) moved = true
                     if (moved) {
                         if (scrolling) {
                             onCommand(RemoteCommand.Scroll(dy * SCROLL_SPEED))
@@ -181,8 +260,14 @@ class RemotePadScreen(
                 else -> true
             }
         }
-        return pad
+        return overlay
     }
+
+    private fun showMouseMode(show: Boolean) {
+        mouseOverlay.visibility = if (show) View.VISIBLE else View.GONE
+    }
+
+    // MARK: keyboard row
 
     private fun buildKeyboardRow(): LinearLayout {
         val input = EditText(context).apply {
@@ -196,33 +281,17 @@ class RemotePadScreen(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        fun smallButton(label: String, onClick: () -> Unit) = Button(context).apply {
-            text = label
-            setOnClickListener { onClick() }
-            layoutParams = LinearLayout.LayoutParams(dp(64), dp(56)).apply {
-                setMargins(dp(4), 0, 0, 0)
-            }
-        }
         row.addView(input)
-        row.addView(smallButton("Send") {
+        row.addView(smallButton("Send", dp(72)) {
             val text = input.text.toString()
             if (text.isNotEmpty()) {
                 onCommand(RemoteCommand.Text(text))
                 input.text.clear()
             }
         })
-        row.addView(smallButton("⌫") { onCommand(RemoteCommand.Key("backspace")) })
-        row.addView(smallButton("⏎") { onCommand(RemoteCommand.Key("return")) })
+        row.addView(smallButton("⌫", dp(56)) { onCommand(RemoteCommand.Key("backspace")) })
+        row.addView(smallButton("⏎", dp(56)) { onCommand(RemoteCommand.Key("return")) })
         return row
-    }
-
-    private fun sectionLabel(text: String): TextView {
-        return TextView(context).apply {
-            this.text = text
-            setTextColor(Color.GRAY)
-            textSize = 12f
-            gravity = Gravity.CENTER
-        }
     }
 
     // MARK: state updates (main thread)
@@ -238,24 +307,17 @@ class RemotePadScreen(
 
     fun setControlsEnabled(enabled: Boolean) {
         padContainer.alpha = if (enabled) 1.0f else 0.4f
+        if (!enabled) showMouseMode(false)
     }
 
     // MARK: helpers
 
-    private fun padButton(
-        label: String,
-        big: Boolean = false,
-        wide: Boolean = false,
-        onClick: () -> Unit,
-    ): Button {
+    private fun smallButton(label: String, width: Int = dp(80), onClick: () -> Unit): Button {
         return Button(context).apply {
             text = label
-            textSize = if (big) 20f else 16f
             setOnClickListener { onClick() }
-            val size = if (big) dp(96) else dp(80)
-            val width = if (wide) dp(200) else size
-            layoutParams = LinearLayout.LayoutParams(width, if (wide) dp(64) else size).apply {
-                setMargins(dp(6), dp(6), dp(6), dp(6))
+            layoutParams = LinearLayout.LayoutParams(width, dp(56)).apply {
+                setMargins(dp(4), dp(4), dp(4), dp(4))
             }
         }
     }
@@ -265,6 +327,15 @@ class RemotePadScreen(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             views.forEach { addView(it) }
+        }
+    }
+
+    private fun sectionLabel(text: String): TextView {
+        return TextView(context).apply {
+            this.text = text
+            setTextColor(Color.GRAY)
+            textSize = 12f
+            gravity = Gravity.CENTER
         }
     }
 
@@ -284,7 +355,7 @@ class RemotePadScreen(
         (value * context.resources.displayMetrics.density).toInt()
 
     companion object {
-        private const val CURSOR_SPEED = 1.6f
+        private const val CURSOR_SPEED = 1.8f
         private const val SCROLL_SPEED = 1.2f
         private const val TAP_TIMEOUT_MS = 250L
     }

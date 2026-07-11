@@ -56,7 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func makeWindow() {
         let content = ContentView().environmentObject(appState)
-        window = NSWindow(
+        window = KioskWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1280, height: 800),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
@@ -109,6 +109,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // MARK: - Local keyboard input (same discrete command path as the remote)
+
+    /// Borderless windows refuse key status by default, which silently eats
+    /// all keyboard input in kiosk mode (no typing into login forms).
+    final class KioskWindow: NSWindow {
+        override var canBecomeKey: Bool { true }
+        override var canBecomeMain: Bool { true }
+    }
 
     private func installKeyMonitor() {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in

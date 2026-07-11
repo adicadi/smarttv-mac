@@ -40,6 +40,8 @@ final class ServicesConfig {
         StreamingService(id: "appletv", name: "Apple TV+", url: URL(string: "https://tv.apple.com")!, icon: "appletv.fill"),
         StreamingService(id: "applemusic", name: "Apple Music", url: URL(string: "https://music.apple.com")!, icon: "music.note"),
         StreamingService(id: "twitch", name: "Twitch", url: URL(string: "https://www.twitch.tv")!, icon: "gamecontroller.fill"),
-        StreamingService(id: "vidking", name: "Vidking", url: URL(string: "https://www.vidking.net")!, icon: "crown.fill"),
+        // Custom movies/series experience: bundled cinema.html with TMDB
+        // browse/search, playing through Vidking embeds.
+        StreamingService(id: "cinema", name: "My Cinema", url: URL(string: "smarttv://cinema")!, icon: "film.stack"),
     ]
 }

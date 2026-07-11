@@ -56,7 +56,13 @@ final class AppState: ObservableObject {
     // MARK: - Discrete navigation (shared by keyboard and remote)
 
     func moveFocus(_ direction: MoveDirection) {
-        guard case .grid = screen, !services.isEmpty else { return }
+        // While a service is on screen, forward d-pad moves into the page as
+        // arrow keys (drives cinema.html and any arrow-aware streaming UI).
+        if case .playing = screen {
+            webViewController.sendArrowKey(direction)
+            return
+        }
+        guard !services.isEmpty else { return }
         var index = focusedIndex
         switch direction {
         case .left: index -= 1

@@ -24,6 +24,10 @@ final class WebViewController: NSObject {
         config.websiteDataStore = .default()
         config.mediaTypesRequiringUserActionForPlayback = []
         config.preferences.isElementFullscreenEnabled = true
+        // Bundled pages (cinema.html) fetch TMDB and embed vidking from a
+        // file:// origin; allow that.
+        config.preferences.setValue(true, forKey: "allowFileAccessFromFileURLs")
+        config.setValue(true, forKey: "allowUniversalAccessFromFileURLs")
 
         // Report fatal <video> errors back to native code so DRM failures are
         // visible in the UI rather than a black rectangle.
@@ -50,7 +54,16 @@ final class WebViewController: NSObject {
         currentServiceName = service.name
         // Only (re)load if the view is empty; returning to a service should
         // resume where the user left off, not restart it.
-        if webView.url == nil {
+        guard webView.url == nil else { return }
+        if service.url.scheme == "smarttv" {
+            // Bundled page, e.g. smarttv://cinema -> Resources/cinema.html
+            let name = service.url.host ?? "cinema"
+            if let fileURL = Bundle.main.url(forResource: name, withExtension: "html") {
+                webView.loadFileURL(fileURL, allowingReadAccessTo: fileURL.deletingLastPathComponent())
+            } else {
+                onPlaybackError?("Bundled page '\(name).html' is missing from the app.")
+            }
+        } else {
             webView.load(URLRequest(url: service.url))
         }
     }
@@ -65,11 +78,29 @@ final class WebViewController: NSObject {
     /// Synthesizes an Enter keypress inside the page for remote "select"
     /// while a service is on screen.
     func sendEnterKey() {
+        sendKey(key: "Enter", code: "Enter", keyCode: 13)
+    }
+
+    /// Forwards remote d-pad navigation into the page as arrow-key events
+    /// (drives cinema.html's focus model; many streaming UIs honor them too).
+    func sendArrowKey(_ direction: MoveDirection) {
+        let name: String
+        let keyCode: Int
+        switch direction {
+        case .up: name = "ArrowUp"; keyCode = 38
+        case .down: name = "ArrowDown"; keyCode = 40
+        case .left: name = "ArrowLeft"; keyCode = 37
+        case .right: name = "ArrowRight"; keyCode = 39
+        }
+        sendKey(key: name, code: name, keyCode: keyCode)
+    }
+
+    private func sendKey(key: String, code: String, keyCode: Int) {
         let js = """
         (function() {
           const t = document.activeElement || document.body;
           for (const type of ['keydown', 'keyup']) {
-            t.dispatchEvent(new KeyboardEvent(type, {key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true}));
+            t.dispatchEvent(new KeyboardEvent(type, {key: '\(key)', code: '\(code)', keyCode: \(keyCode), which: \(keyCode), bubbles: true}));
           }
         })();
         """
