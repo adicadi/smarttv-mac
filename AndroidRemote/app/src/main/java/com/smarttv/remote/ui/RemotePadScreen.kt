@@ -1,26 +1,34 @@
 package com.smarttv.remote.ui
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.text.InputType
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import com.smarttv.remote.model.RemoteCommand
 
 /**
- * The full v1 control surface, built programmatically (no layout XML, no
+ * The remote control surface, built programmatically (no layout XML, no
  * androidx): status line, PIN entry (shown only while pairing), d-pad with
- * center select, then back/home and volume rows.
+ * center select, back/home and volume rows, a trackpad area (one finger
+ * moves the cursor, tap clicks, two fingers scroll), a text/keyboard row
+ * and a voice-input button.
  */
 class RemotePadScreen(
     private val context: Context,
     private val onCommand: (RemoteCommand) -> Unit,
     private val onPinSubmit: (String) -> Unit,
+    private val onVoiceRequest: () -> Unit,
 ) {
     private lateinit var statusView: TextView
     private lateinit var pinRow: LinearLayout
@@ -28,12 +36,16 @@ class RemotePadScreen(
     private lateinit var padContainer: LinearLayout
 
     fun createView(): View {
+        val scroll = ScrollView(context).apply {
+            setBackgroundColor(Color.parseColor("#101418"))
+            isFillViewport = true
+        }
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setBackgroundColor(Color.parseColor("#101418"))
-            setPadding(dp(24), dp(48), dp(24), dp(24))
+            setPadding(dp(24), dp(40), dp(24), dp(24))
         }
+        scroll.addView(root)
 
         statusView = TextView(context).apply {
             text = "Searching for SmartTV…"
@@ -97,8 +109,120 @@ class RemotePadScreen(
             wrapWrap(topMargin = dp(12))
         )
 
+        // Trackpad: one finger moves the cursor, tap clicks, two fingers scroll.
+        padContainer.addView(sectionLabel("Trackpad — tap to click, two fingers to scroll"), matchWrap(topMargin = dp(24)))
+        padContainer.addView(buildTrackpad(), matchWrap(topMargin = dp(8)))
+
+        // Keyboard row: free text + special keys.
+        padContainer.addView(sectionLabel("Keyboard"), matchWrap(topMargin = dp(20)))
+        padContainer.addView(buildKeyboardRow(), matchWrap(topMargin = dp(8)))
+
+        // Voice input (speech-to-text, sent as typed text).
+        padContainer.addView(
+            rowOf(padButton("🎤 Speak", wide = true) { onVoiceRequest() }),
+            wrapWrap(topMargin = dp(12))
+        )
+
         root.addView(padContainer, matchWrap())
-        return root
+        return scroll
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    private fun buildTrackpad(): View {
+        val pad = View(context).apply {
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#1C232B"))
+                cornerRadius = dp(16).toFloat()
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(200)
+            )
+        }
+        val slop = ViewConfiguration.get(context).scaledTouchSlop
+        var lastX = 0f
+        var lastY = 0f
+        var downTime = 0L
+        var moved = false
+        var scrolling = false
+        pad.setOnTouchListener { view, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    // Don't let the enclosing ScrollView steal the gesture.
+                    view.parent.requestDisallowInterceptTouchEvent(true)
+                    lastX = event.x; lastY = event.y
+                    downTime = event.eventTime
+                    moved = false; scrolling = false
+                    true
+                }
+                MotionEvent.ACTION_POINTER_DOWN -> {
+                    scrolling = true
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = event.x - lastX
+                    val dy = event.y - lastY
+                    if (!moved && (Math.abs(dx) > slop || Math.abs(dy) > slop)) moved = true
+                    if (moved) {
+                        if (scrolling) {
+                            onCommand(RemoteCommand.Scroll(dy * SCROLL_SPEED))
+                        } else {
+                            onCommand(RemoteCommand.PointerMove(dx * CURSOR_SPEED, dy * CURSOR_SPEED))
+                        }
+                        lastX = event.x; lastY = event.y
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (!moved && !scrolling && event.eventTime - downTime < TAP_TIMEOUT_MS) {
+                        onCommand(RemoteCommand.PointerClick)
+                    }
+                    true
+                }
+                else -> true
+            }
+        }
+        return pad
+    }
+
+    private fun buildKeyboardRow(): LinearLayout {
+        val input = EditText(context).apply {
+            hint = "Type on TV…"
+            inputType = InputType.TYPE_CLASS_TEXT
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.GRAY)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        fun smallButton(label: String, onClick: () -> Unit) = Button(context).apply {
+            text = label
+            setOnClickListener { onClick() }
+            layoutParams = LinearLayout.LayoutParams(dp(64), dp(56)).apply {
+                setMargins(dp(4), 0, 0, 0)
+            }
+        }
+        row.addView(input)
+        row.addView(smallButton("Send") {
+            val text = input.text.toString()
+            if (text.isNotEmpty()) {
+                onCommand(RemoteCommand.Text(text))
+                input.text.clear()
+            }
+        })
+        row.addView(smallButton("⌫") { onCommand(RemoteCommand.Key("backspace")) })
+        row.addView(smallButton("⏎") { onCommand(RemoteCommand.Key("return")) })
+        return row
+    }
+
+    private fun sectionLabel(text: String): TextView {
+        return TextView(context).apply {
+            this.text = text
+            setTextColor(Color.GRAY)
+            textSize = 12f
+            gravity = Gravity.CENTER
+        }
     }
 
     // MARK: state updates (main thread)
@@ -118,13 +242,19 @@ class RemotePadScreen(
 
     // MARK: helpers
 
-    private fun padButton(label: String, big: Boolean = false, onClick: () -> Unit): Button {
+    private fun padButton(
+        label: String,
+        big: Boolean = false,
+        wide: Boolean = false,
+        onClick: () -> Unit,
+    ): Button {
         return Button(context).apply {
             text = label
             textSize = if (big) 20f else 16f
             setOnClickListener { onClick() }
             val size = if (big) dp(96) else dp(80)
-            layoutParams = LinearLayout.LayoutParams(size, size).apply {
+            val width = if (wide) dp(200) else size
+            layoutParams = LinearLayout.LayoutParams(width, if (wide) dp(64) else size).apply {
                 setMargins(dp(6), dp(6), dp(6), dp(6))
             }
         }
@@ -152,4 +282,10 @@ class RemotePadScreen(
 
     private fun dp(value: Int): Int =
         (value * context.resources.displayMetrics.density).toInt()
+
+    companion object {
+        private const val CURSOR_SPEED = 1.6f
+        private const val SCROLL_SPEED = 1.2f
+        private const val TAP_TIMEOUT_MS = 250L
+    }
 }

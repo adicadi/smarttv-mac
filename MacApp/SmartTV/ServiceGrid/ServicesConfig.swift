@@ -37,10 +37,9 @@ final class ServicesConfig {
         StreamingService(id: "youtube", name: "YouTube", url: URL(string: "https://www.youtube.com")!, icon: "play.rectangle.fill"),
         StreamingService(id: "netflix", name: "Netflix", url: URL(string: "https://www.netflix.com/browse")!, icon: "n.square.fill"),
         StreamingService(id: "primevideo", name: "Prime Video", url: URL(string: "https://www.primevideo.com")!, icon: "p.square.fill"),
-        StreamingService(id: "disneyplus", name: "Disney+", url: URL(string: "https://www.disneyplus.com")!, icon: "d.square.fill"),
-        StreamingService(id: "hotstar", name: "JioHotstar", url: URL(string: "https://www.hotstar.com")!, icon: "h.square.fill"),
         StreamingService(id: "appletv", name: "Apple TV+", url: URL(string: "https://tv.apple.com")!, icon: "appletv.fill"),
-        StreamingService(id: "spotify", name: "Spotify", url: URL(string: "https://open.spotify.com")!, icon: "music.note"),
+        StreamingService(id: "applemusic", name: "Apple Music", url: URL(string: "https://music.apple.com")!, icon: "music.note"),
         StreamingService(id: "twitch", name: "Twitch", url: URL(string: "https://www.twitch.tv")!, icon: "gamecontroller.fill"),
+        StreamingService(id: "vidking", name: "Vidking", url: URL(string: "https://www.vidking.net")!, icon: "crown.fill"),
     ]
 }

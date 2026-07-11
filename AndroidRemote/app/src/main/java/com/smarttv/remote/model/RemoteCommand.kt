@@ -15,6 +15,12 @@ sealed class RemoteCommand {
     object Back : RemoteCommand()
     object Home : RemoteCommand()
     data class Volume(val direction: String) : RemoteCommand()
+    data class PointerMove(val dx: Float, val dy: Float) : RemoteCommand()
+    object PointerClick : RemoteCommand()
+    data class Scroll(val dy: Float) : RemoteCommand()
+    data class Text(val value: String) : RemoteCommand()
+    /** Special key: "return", "backspace", "space", "escape". */
+    data class Key(val value: String) : RemoteCommand()
 
     fun toJson(): String {
         val json = JSONObject()
@@ -27,6 +33,12 @@ sealed class RemoteCommand {
             is Back -> json.put("type", "command").put("action", "back")
             is Home -> json.put("type", "command").put("action", "home")
             is Volume -> json.put("type", "command").put("action", "volume").put("direction", direction)
+            is PointerMove -> json.put("type", "command").put("action", "pointer_move")
+                .put("dx", dx.toDouble()).put("dy", dy.toDouble())
+            is PointerClick -> json.put("type", "command").put("action", "pointer_click")
+            is Scroll -> json.put("type", "command").put("action", "scroll").put("dy", dy.toDouble())
+            is Text -> json.put("type", "command").put("action", "text").put("value", value)
+            is Key -> json.put("type", "command").put("action", "key").put("value", value)
         }
         return json.toString()
     }

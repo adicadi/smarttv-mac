@@ -122,10 +122,7 @@ final class RemoteServer {
                 send(["type": "error", "message": "not_paired"], to: client)
                 return
             }
-            router.handle(
-                action: json["action"] as? String ?? "",
-                direction: json["direction"] as? String
-            )
+            router.handle(json)
         case "hello":
             // A new client with no token announces itself: show a PIN.
             if !client.isPaired {

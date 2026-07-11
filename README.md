@@ -17,7 +17,7 @@ Everything is LAN-only. No cloud, no accounts beyond the streaming services.
 
 ### Mac (requires Xcode 16+, macOS 13+)
 
-```
+```sh
 open MacApp/SmartTV.xcodeproj   # then ⌘R
 ```
 
@@ -34,7 +34,7 @@ Escape returns to the grid from a service.
 
 ### Android (requires Android Studio / SDK 36, minSdk 26)
 
-```
+```sh
 cd AndroidRemote && ./gradlew assembleDebug
 # APK at app/build/outputs/apk/debug/app-debug.apk
 ```
@@ -56,6 +56,11 @@ phone once, after that it reconnects silently.
 - **Android UI is programmatic classic Views, not Compose** — keeps the
   dependency footprint to exactly one third-party library (OkHttp for
   WebSocket, as allowed by the dependency policy).
+- **Beyond the v1 d-pad surface**, the remote also has a trackpad (one
+  finger moves the Mac cursor, tap clicks, two fingers scroll), a keyboard
+  row, and voice input (speech-to-text sent as typed text). These inject
+  CGEvents on the Mac and need a one-time Accessibility permission grant
+  (System Settings → Privacy & Security → Accessibility → SmartTV).
 - **`ContentView.swift` added** under `MacApp/SmartTV/App/` (root view that
   switches grid/web view and hosts PIN + error overlays).
 

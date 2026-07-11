@@ -30,7 +30,19 @@ and `AndroidRemote/.../connection/RemoteSocketClient.kt` (OkHttp WebSocket).
 { "type": "command", "action": "back" }
 { "type": "command", "action": "home" }
 { "type": "command", "action": "volume", "direction": "up|down" }
+{ "type": "command", "action": "pointer_move", "dx": 12.5, "dy": -3.0 }
+{ "type": "command", "action": "pointer_click" }
+{ "type": "command", "action": "scroll", "dy": 40.0 }
+{ "type": "command", "action": "text", "value": "stranger things" }
+{ "type": "command", "action": "key", "value": "return|backspace|space|escape" }
 ```
+
+`pointer_move` deltas are in screen points. `text` types the string wherever
+keyboard focus is on the Mac (search fields etc.); voice capture on Android
+is speech-to-text delivered as a normal `text` command. Pointer, scroll,
+`text` and `key` are injected as system events (CGEvent) and require the
+SmartTV app to be granted **Accessibility** permission on the Mac — the first
+such command triggers the system prompt and shows a hint in the TV UI.
 
 ## Mac → Android
 
@@ -56,4 +68,7 @@ succeeded.
 | select             | opens focused service         | synthetic Enter keypress into the page  |
 | back               | no-op                         | web-view back, or grid if no history    |
 | home               | no-op (already home)          | returns to grid (web view kept alive)   |
-| volume             | system output volume ±7       | system output volume ±7                 |
+| volume             | system output volume ±7       | system output volume ±7                |
+| pointer_move/click | moves/clicks system cursor    | moves/clicks system cursor             |
+| scroll             | scrolls under cursor          | scrolls under cursor                   |
+| text / key         | types into focused element    | types into focused element             |

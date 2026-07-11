@@ -1,13 +1,21 @@
 package com.smarttv.remote
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.os.Bundle
+import android.speech.RecognizerIntent
+import android.widget.Toast
 import com.smarttv.remote.connection.RemoteSocketClient
 import com.smarttv.remote.discovery.BonjourDiscovery
 import com.smarttv.remote.model.RemoteCommand
 import com.smarttv.remote.ui.RemotePadScreen
 
 class MainActivity : Activity() {
+
+    companion object {
+        private const val VOICE_REQUEST_CODE = 1001
+    }
 
     private lateinit var discovery: BonjourDiscovery
     private lateinit var socketClient: RemoteSocketClient
@@ -26,9 +34,42 @@ class MainActivity : Activity() {
                     pad.setStatus("Pairing…")
                     socketClient.submitPin(pin)
                 }
-            }
+            },
+            onVoiceRequest = { startVoiceCapture() }
         )
         setContentView(pad.createView())
+    }
+
+    /** Speech-to-text via the system recognizer; result is sent as typed text. */
+    private fun startVoiceCapture() {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(
+                RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+            )
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to type on the TV")
+        }
+        try {
+            @Suppress("DEPRECATION")
+            startActivityForResult(intent, VOICE_REQUEST_CODE)
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(this, "No speech recognizer on this device", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        @Suppress("DEPRECATION")
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == VOICE_REQUEST_CODE && resultCode == RESULT_OK) {
+            val spoken = data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()
+            if (!spoken.isNullOrEmpty()) {
+                socketClient.send(RemoteCommand.Text(spoken))
+                pad.setStatus("Sent: “$spoken”")
+            }
+        }
     }
 
     override fun onStart() {
