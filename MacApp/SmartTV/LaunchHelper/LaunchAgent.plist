@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Manual fallback for macOS < 13 where SMAppService is unavailable.
+         Copy to ~/Library/LaunchAgents/com.smarttv.launcher.plist and adjust
+         the executable path if SmartTV.app lives somewhere else. -->
+    <key>Label</key>
+    <string>com.smarttv.launcher</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Applications/SmartTV.app/Contents/MacOS/SmartTV</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+</dict>
+</plist>

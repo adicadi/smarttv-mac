@@ -1,0 +1,13 @@
+# macOS
+.DS_Store
+xcuserdata/
+DerivedData/
+build/
+
+# Android
+AndroidRemote/.gradle/
+AndroidRemote/local.properties
+AndroidRemote/**/build/
+AndroidRemote/.idea/
+*.apk
+*.iml

@@ -1,0 +1,59 @@
+# SmartTV Remote Protocol
+
+JSON text messages over a WebSocket connection on the LAN. The Mac advertises
+the endpoint via Bonjour/mDNS as service type `_smarttv._tcp` (the port is
+carried in the Bonjour record; no fixed port, no manual IP entry).
+
+Implemented identically by `MacApp/SmartTV/RemoteServer/` (Network.framework)
+and `AndroidRemote/.../connection/RemoteSocketClient.kt` (OkHttp WebSocket).
+
+## Connection lifecycle
+
+1. Android discovers `_smarttv._tcp` via NSD and opens a WebSocket.
+2. If the phone has a stored device token it sends `auth`; on
+   `auth_result: accepted` it may immediately send commands.
+3. Otherwise (or after a rejected `auth`) it sends `hello`; the TV displays a
+   4-digit PIN on screen. The phone submits it with `pair`.
+4. On `pair_result: accepted` the phone stores `deviceToken` for silent
+   reconnects and may start sending commands.
+5. Any `command` from an unpaired connection is rejected with
+   `{"type":"error","message":"not_paired"}`.
+
+## Android → Mac
+
+```json
+{ "type": "hello" }
+{ "type": "auth", "token": "<stored device token>" }
+{ "type": "pair", "pin": "4821" }
+{ "type": "command", "action": "navigate", "direction": "up|down|left|right" }
+{ "type": "command", "action": "select" }
+{ "type": "command", "action": "back" }
+{ "type": "command", "action": "home" }
+{ "type": "command", "action": "volume", "direction": "up|down" }
+```
+
+## Mac → Android
+
+```json
+{ "type": "pair_result", "status": "accepted", "deviceToken": "…" }
+{ "type": "pair_result", "status": "rejected" }
+{ "type": "auth_result", "status": "accepted" }
+{ "type": "auth_result", "status": "rejected" }
+{ "type": "state", "screen": "grid", "focusedServiceId": "netflix" }
+{ "type": "state", "screen": "playing", "serviceId": "netflix" }
+{ "type": "error", "message": "not_paired" }
+```
+
+`state` is pushed to every paired client whenever the TV's screen or focus
+changes, so the remote UI reflects reality rather than assuming its commands
+succeeded.
+
+## Semantics on the Mac
+
+| Command            | On grid                       | While playing                          |
+|--------------------|-------------------------------|----------------------------------------|
+| navigate           | moves tile focus              | ignored (v1)                            |
+| select             | opens focused service         | synthetic Enter keypress into the page  |
+| back               | no-op                         | web-view back, or grid if no history    |
+| home               | no-op (already home)          | returns to grid (web view kept alive)   |
+| volume             | system output volume ±7       | system output volume ±7                 |
