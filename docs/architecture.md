@@ -2,7 +2,7 @@
 
 Two apps, one LAN, no cloud.
 
-```
+```text
 ┌────────────────────────── Mac ──────────────────────────┐      ┌───── Android ─────┐
 │  SmartTV.app (Swift, SwiftUI + AppKit)                  │      │  AndroidRemote     │
 │                                                         │      │  (Kotlin)          │
@@ -43,7 +43,12 @@ Two apps, one LAN, no cloud.
   WKWebView is deliberate: WebKit's native FairPlay/EME handles DRM streaming
   far more reliably than a Chromium embed. Navigation failures and fatal
   `<video>` errors (the DRM-failure signature) surface as a visible error
-  banner, never a silent black screen.
+  banner, never a silent black screen. Media is explicitly paused (all
+  `<video>`/`<audio>` elements) whenever it shouldn't be audible/visible even
+  though the WKWebView keeps running: returning to the grid, the window
+  becoming occluded (another app's fullscreen Space covering it, minimized,
+  etc. — detected via `NSWindow.didChangeOcclusionStateNotification`), and on
+  HDMI-disconnect kiosk exit.
 - **RemoteServer/** — `NWListener` with `NWProtocolWebSocket` (zero
   third-party deps), advertised over Bonjour. First contact from an unknown
   phone puts a 4-digit PIN on the TV; a redeemed PIN mints a persistent

@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.StateListDrawable
 import android.text.InputType
@@ -164,25 +165,34 @@ class RemotePadScreen(
             },
             FrameLayout.LayoutParams(dp(96), dp(96), Gravity.CENTER)
         )
-        // Directional chevrons around the ring.
-        fun chevron(symbol: String, gravity: Int, hMargin: Int, vMargin: Int) {
+        // Directional chevrons around the ring: real buttons, each a single
+        // tap = one Navigate(direction) step. Padding enlarges the touch
+        // target well past the glyph itself. Being individually clickable,
+        // each one consumes its own touch and never falls through to the
+        // pad's swipe/tap-to-select handling below.
+        fun chevron(symbol: String, direction: String, edgeGravity: Int, hMargin: Int, vMargin: Int) {
             pad.addView(
                 TextView(context).apply {
                     text = symbol
-                    setTextColor(Color.parseColor("#5A646E"))
+                    setTextColor(Color.parseColor("#8A96A2"))
                     textSize = 20f
+                    gravity = Gravity.CENTER
+                    isClickable = true
+                    background = StateListDrawable().apply {
+                        addState(intArrayOf(android.R.attr.state_pressed), roundedBg(CARD_PRESSED, dp(20)))
+                        addState(intArrayOf(), ColorDrawable(Color.TRANSPARENT))
+                    }
+                    setOnClickListener { onCommand(RemoteCommand.Navigate(direction)) }
                 },
-                FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.WRAP_CONTENT,
-                    FrameLayout.LayoutParams.WRAP_CONTENT,
-                    gravity
-                ).apply { setMargins(hMargin, vMargin, hMargin, vMargin) }
+                FrameLayout.LayoutParams(dp(48), dp(48), edgeGravity).apply {
+                    setMargins(hMargin, vMargin, hMargin, vMargin)
+                }
             )
         }
-        chevron("▲", Gravity.TOP or Gravity.CENTER_HORIZONTAL, 0, dp(16))
-        chevron("▼", Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL, 0, dp(16))
-        chevron("◀", Gravity.START or Gravity.CENTER_VERTICAL, dp(16), 0)
-        chevron("▶", Gravity.END or Gravity.CENTER_VERTICAL, dp(16), 0)
+        chevron("▲", "up", Gravity.TOP or Gravity.CENTER_HORIZONTAL, 0, dp(8))
+        chevron("▼", "down", Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL, 0, dp(8))
+        chevron("◀", "left", Gravity.START or Gravity.CENTER_VERTICAL, dp(8), 0)
+        chevron("▶", "right", Gravity.END or Gravity.CENTER_VERTICAL, dp(8), 0)
         val step = dp(70).toFloat() // finger travel per navigation step
         val slop = ViewConfiguration.get(context).scaledTouchSlop
         var startX = 0f; var startY = 0f
@@ -374,10 +384,10 @@ class RemotePadScreen(
         }
     }
 
-    private fun roundedBg(color: Int): GradientDrawable =
+    private fun roundedBg(color: Int, cornerRadiusPx: Int = dp(14)): GradientDrawable =
         GradientDrawable().apply {
             setColor(color)
-            cornerRadius = dp(14).toFloat()
+            cornerRadius = cornerRadiusPx.toFloat()
         }
 
     private fun rowOf(vararg views: View): LinearLayout {

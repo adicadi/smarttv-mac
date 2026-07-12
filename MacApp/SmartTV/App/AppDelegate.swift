@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var remoteServer: RemoteServer!
     private var commandRouter: CommandRouter!
     private var keyMonitor: Any?
+    private var occlusionObserver: NSObjectProtocol?
 
     /// The display the window is currently fullscreened on, if any.
     private var kioskDisplayID: CGDirectDisplayID?
@@ -34,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         displayMonitor.start()
 
         installKeyMonitor()
+        installOcclusionObserver()
 
         // If launched (e.g. by the login item) while an external display is
         // already attached, go straight to kiosk mode on it.
@@ -48,8 +50,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        if let occlusionObserver { NotificationCenter.default.removeObserver(occlusionObserver) }
         remoteServer.stop()
         displayMonitor.stop()
+    }
+
+    /// Stops playback the moment the window isn't actually visible on
+    /// screen — covered by another app's fullscreen Space, minimized, or
+    /// otherwise occluded — rather than letting a service keep playing
+    /// audio/video no one can see.
+    private func installOcclusionObserver() {
+        occlusionObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didChangeOcclusionStateNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, let window = self.window else { return }
+                if !window.occlusionState.contains(.visible) {
+                    self.appState.webViewController.pauseCurrent()
+                }
+            }
+        }
     }
 
     // MARK: - Window / kiosk management
@@ -93,6 +115,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Restore a normal desktop window on the built-in display.
     private func exitKiosk() {
+        appState.webViewController.pauseCurrent()
         kioskDisplayID = nil
         NSApp.presentationOptions = []
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]

@@ -75,6 +75,21 @@ final class WebViewController: NSObject {
     func goBack() { current?.goBack() }
     func goForward() { current?.goForward() }
 
+    /// Pauses any <video>/<audio> in the currently displayed service. Called
+    /// whenever playback should stop being audible/visible even though the
+    /// WKWebView itself stays alive in the background (returning to the
+    /// grid, the window being covered by another app's fullscreen space,
+    /// HDMI disconnect, etc).
+    func pauseCurrent() {
+        current?.evaluateJavaScript(Self.pauseMediaJS, completionHandler: nil)
+    }
+
+    private static let pauseMediaJS = """
+    document.querySelectorAll('video, audio').forEach(function(m) {
+      try { m.pause(); } catch (e) {}
+    });
+    """
+
     /// Synthesizes an Enter keypress inside the page for remote "select"
     /// while a service is on screen.
     func sendEnterKey() {

@@ -106,6 +106,10 @@ final class AppState: ObservableObject {
     }
 
     func goHome() {
+        // The web view keeps running behind the grid (so a service can
+        // resume where it left off), but its media must not keep
+        // playing/sounding while it's off screen.
+        webViewController.pauseCurrent()
         screen = .grid
         errorMessage = nil
         notifyStateChange()
