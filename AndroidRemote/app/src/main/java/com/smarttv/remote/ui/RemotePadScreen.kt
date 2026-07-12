@@ -345,7 +345,10 @@ class RemotePadScreen(
     }
 
     fun setControlsEnabled(enabled: Boolean) {
-        padContainer.alpha = if (enabled) 1.0f else 0.4f
+        val target = if (enabled) 1.0f else 0.4f
+        if (padContainer.alpha != target) {
+            padContainer.animate().alpha(target).setDuration(250).start()
+        }
         if (!enabled) showMouseMode(false)
     }
 

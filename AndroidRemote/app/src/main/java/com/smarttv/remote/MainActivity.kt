@@ -86,16 +86,21 @@ class MainActivity : Activity() {
 
     private val discoveryListener: BonjourDiscovery.Listener = object : BonjourDiscovery.Listener {
         override fun onFound(host: String, port: Int, serviceName: String) {
+            // mDNS often re-announces; don't tear down a healthy connection.
+            if (socketClient.isConnected) return
             pad.setStatus("Connecting to $serviceName…")
             socketClient.connect(host, port, socketListener)
         }
 
         override fun onLost() {
+            // mDNS records flap regularly; only the socket state matters.
+            if (socketClient.isConnected) return
             pad.setStatus("SmartTV disappeared — searching…")
             pad.setControlsEnabled(false)
         }
 
         override fun onNothingFound() {
+            if (socketClient.isConnected) return
             pad.setStatus("No SmartTV found on this network.\nIs the Mac app running on the same Wi-Fi?")
         }
     }
@@ -135,8 +140,11 @@ class MainActivity : Activity() {
         override fun onDisconnected(reason: String) {
             pad.setStatus("Disconnected ($reason) — searching…")
             pad.setControlsEnabled(false)
-            // Rediscover; the Mac may have restarted on a new port.
-            discovery.start(discoveryListener)
+            // Rediscover after a short backoff (the Mac may have restarted on
+            // a new port); immediate retries cause visible flicker loops.
+            window.decorView.postDelayed({
+                if (!socketClient.isConnected) discovery.start(discoveryListener)
+            }, 2000)
         }
     }
 }

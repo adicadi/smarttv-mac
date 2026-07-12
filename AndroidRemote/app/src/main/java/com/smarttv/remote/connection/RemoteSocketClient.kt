@@ -40,8 +40,11 @@ class RemoteSocketClient(context: Context) {
     private var webSocket: WebSocket? = null
     private var listener: Listener? = null
     @Volatile private var paired = false
+    @Volatile private var connected = false
 
     val isPaired: Boolean get() = paired
+    /** True while the WebSocket is open — used to ignore mDNS flapping. */
+    val isConnected: Boolean get() = connected
 
     fun connect(host: String, port: Int, listener: Listener) {
         disconnect()
@@ -55,6 +58,7 @@ class RemoteSocketClient(context: Context) {
         webSocket?.close(1000, "bye")
         webSocket = null
         paired = false
+        connected = false
     }
 
     fun submitPin(pin: String) {
@@ -67,6 +71,7 @@ class RemoteSocketClient(context: Context) {
 
     private val socketListener = object : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
+            connected = true
             post { listener?.onConnected() }
             val token = prefs.getString(KEY_TOKEN, null)
             if (token != null) {
@@ -109,11 +114,13 @@ class RemoteSocketClient(context: Context) {
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             paired = false
+            connected = false
             post { listener?.onDisconnected(t.message ?: "connection failed") }
         }
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
             paired = false
+            connected = false
             post { listener?.onDisconnected(reason.ifEmpty { "closed" }) }
         }
     }
