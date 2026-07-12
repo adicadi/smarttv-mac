@@ -96,6 +96,34 @@ final class WebViewController: NSObject {
         sendKey(key: "Enter", code: "Enter", keyCode: 13)
     }
 
+    /// Remote "select"/OK while a service is on screen: toggles play/pause
+    /// on the active <video> (like a TV remote's center button), falling
+    /// back to a synthetic Enter keypress when there's no video to toggle
+    /// (e.g. still browsing a page's own UI, such as My Cinema's grid).
+    /// Only reaches same-origin video elements — a video inside a
+    /// cross-origin embed (e.g. My Cinema's Vidking iframe) isn't reachable
+    /// from here, so it falls back to Enter there too.
+    func togglePlayPauseOrSelect() {
+        current?.evaluateJavaScript(Self.togglePlayPauseJS) { [weak self] result, _ in
+            MainActor.assumeIsolated {
+                guard let self, (result as? String) != "toggled" else { return }
+                self.sendEnterKey()
+            }
+        }
+    }
+
+    private static let togglePlayPauseJS = """
+    (function() {
+      const videos = Array.from(document.querySelectorAll('video'));
+      if (videos.length === 0) return 'no-video';
+      const target = videos.reduce(function(a, b) {
+        return (b.clientWidth * b.clientHeight) > (a.clientWidth * a.clientHeight) ? b : a;
+      });
+      if (target.paused) { target.play(); } else { target.pause(); }
+      return 'toggled';
+    })();
+    """
+
     /// Forwards remote d-pad navigation into the page as arrow-key events
     /// (drives cinema.html's focus model; many streaming UIs honor them too).
     func sendArrowKey(_ direction: MoveDirection) {

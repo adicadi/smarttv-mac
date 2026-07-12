@@ -62,13 +62,15 @@ succeeded.
 
 ## Semantics on the Mac
 
-| Command            | On grid                       | While playing                          |
-|--------------------|-------------------------------|----------------------------------------|
-| navigate           | moves tile focus              | ignored (v1)                            |
-| select             | opens focused service         | synthetic Enter keypress into the page  |
-| back               | no-op                         | web-view back, or grid if no history    |
-| home               | no-op (already home)          | returns to grid (web view kept alive)   |
-| volume             | system output volume ±7       | system output volume ±7                |
-| pointer_move/click | moves/clicks system cursor    | moves/clicks system cursor             |
-| scroll             | scrolls under cursor          | scrolls under cursor                   |
-| text / key         | types into focused element    | types into focused element             |
+| Command             | On grid                    | While playing                        |
+| ------------------- | --------------------------- | ------------------------------------- |
+| navigate            | moves tile focus            | synthetic arrow-key press into the page |
+| select              | opens focused service       | toggles play/pause on the active video[^select-fallback] |
+| back                | no-op                       | web-view back, or grid if no history  |
+| home                | no-op (already home)        | returns to grid (web view kept alive) |
+| volume              | system output volume ±7     | system output volume ±7               |
+| pointer_move/click  | moves/clicks system cursor  | moves/clicks system cursor            |
+| scroll              | scrolls under cursor        | scrolls under cursor                  |
+| text / key          | types into focused element  | types into focused element            |
+
+[^select-fallback]: Falls back to a synthetic Enter keypress when there's no `<video>` element to toggle — e.g. still browsing a page's own UI (My Cinema's grid) or a site with no player on screen yet.

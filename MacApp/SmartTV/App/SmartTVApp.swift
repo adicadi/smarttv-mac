@@ -85,9 +85,11 @@ final class AppState: ObservableObject {
             screen = .playing(service)
             notifyStateChange()
         case .playing:
-            // Forward "select" into the page as a synthetic Enter key press so
-            // sites with their own focus model (e.g. YouTube TV UI) respond.
-            webViewController.sendEnterKey()
+            // OK acts like a TV remote's center button: toggles play/pause
+            // on the active video, falling back to a synthetic Enter
+            // keypress for non-video UI (e.g. selecting a card in My Cinema's
+            // browse grid, or a site's own focus model like YouTube TV).
+            webViewController.togglePlayPauseOrSelect()
         }
     }
 
