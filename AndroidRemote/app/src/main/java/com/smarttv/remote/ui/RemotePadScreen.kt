@@ -96,8 +96,10 @@ class RemotePadScreen(
         // flexible space pushes the circle toward the vertical middle
         padContainer.addView(Space(context), weightSpacer())
 
-        padContainer.addView(buildCirclePad(), wrapWrap())
-        padContainer.addView(sectionLabel("swipe to move · tap to select"), matchWrap(topMargin = dp(10)))
+        // NB: addView without params would still keep the pad's own
+        // LayoutParams; never pass wrap params here or the circle collapses.
+        padContainer.addView(buildCirclePad())
+        padContainer.addView(sectionLabel("swipe to move · tap to select"), matchWrap(topMargin = dp(12)))
 
         padContainer.addView(
             rowOf(
@@ -139,12 +141,8 @@ class RemotePadScreen(
 
     @SuppressLint("ClickableViewAccessibility")
     private fun buildCirclePad(): View {
-        val size = dp(240)
-        val pad = TextView(context).apply {
-            text = "OK"
-            setTextColor(Color.parseColor("#AAB6C2"))
-            textSize = 20f
-            gravity = Gravity.CENTER
+        val size = dp(264)
+        val pad = FrameLayout(context).apply {
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
                 setColor(CARD)
@@ -152,6 +150,39 @@ class RemotePadScreen(
             }
             layoutParams = LinearLayout.LayoutParams(size, size)
         }
+        // Center "OK" button look (visual only; the whole circle is the touch surface).
+        pad.addView(
+            TextView(context).apply {
+                text = "OK"
+                setTextColor(Color.parseColor("#C6D0DA"))
+                textSize = 22f
+                gravity = Gravity.CENTER
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.parseColor("#2C3641"))
+                }
+            },
+            FrameLayout.LayoutParams(dp(96), dp(96), Gravity.CENTER)
+        )
+        // Directional chevrons around the ring.
+        fun chevron(symbol: String, gravity: Int, hMargin: Int, vMargin: Int) {
+            pad.addView(
+                TextView(context).apply {
+                    text = symbol
+                    setTextColor(Color.parseColor("#5A646E"))
+                    textSize = 20f
+                },
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    gravity
+                ).apply { setMargins(hMargin, vMargin, hMargin, vMargin) }
+            )
+        }
+        chevron("▲", Gravity.TOP or Gravity.CENTER_HORIZONTAL, 0, dp(16))
+        chevron("▼", Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL, 0, dp(16))
+        chevron("◀", Gravity.START or Gravity.CENTER_VERTICAL, dp(16), 0)
+        chevron("▶", Gravity.END or Gravity.CENTER_VERTICAL, dp(16), 0)
         val step = dp(70).toFloat() // finger travel per navigation step
         val slop = ViewConfiguration.get(context).scaledTouchSlop
         var startX = 0f; var startY = 0f
