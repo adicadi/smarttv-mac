@@ -21,6 +21,8 @@ sealed class RemoteCommand {
     data class Text(val value: String) : RemoteCommand()
     /** Special key: "return", "backspace", "space", "escape". */
     data class Key(val value: String) : RemoteCommand()
+    /** Skip back/forward 10s on the active video. Direction: "back" | "forward". */
+    data class Seek(val direction: String) : RemoteCommand()
 
     fun toJson(): String {
         val json = JSONObject()
@@ -39,6 +41,7 @@ sealed class RemoteCommand {
             is Scroll -> json.put("type", "command").put("action", "scroll").put("dy", dy.toDouble())
             is Text -> json.put("type", "command").put("action", "text").put("value", value)
             is Key -> json.put("type", "command").put("action", "key").put("value", value)
+            is Seek -> json.put("type", "command").put("action", "seek").put("direction", direction)
         }
         return json.toString()
     }

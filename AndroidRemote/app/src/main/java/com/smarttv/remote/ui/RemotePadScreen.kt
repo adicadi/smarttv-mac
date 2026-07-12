@@ -1,34 +1,25 @@
 package com.smarttv.remote.ui
 
-import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Color
-import android.graphics.Typeface
-import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.StateListDrawable
-import android.text.InputType
 import android.view.Gravity
-import android.view.MotionEvent
 import android.view.View
-import android.view.ViewConfiguration
-import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.Space
 import android.widget.TextView
 import com.smarttv.remote.model.RemoteCommand
-import kotlin.math.abs
 
 /**
- * Remote control surface, built programmatically (no layout XML, no androidx).
- *
- * Layout mimics a TV remote: status on top, a large Firestick-style circle
- * pad in the middle (swipe = d-pad steps, tap = select), control rows below,
- * keyboard/voice at the bottom. A full-screen "mouse mode" overlay turns the
- * whole phone into a trackpad (finger = cursor, tap = click, two fingers =
- * scroll).
+ * Remote control surface, following the "SmartTV Remote Prototype" design:
+ * a numeric-keypad PIN entry screen, then a dark rounded remote body with a
+ * mic button, a ring-shaped d-pad (four edge buttons + a circular center
+ * SELECT), icon Back/Home buttons, a skip-back/skip-forward row, and a
+ * vertical volume rocker. Mouse mode and the on-screen keyboard (not part of
+ * the original design) are tucked into a slim utility row so those real
+ * features aren't lost.
  */
 class RemotePadScreen(
     private val context: Context,
@@ -36,401 +27,589 @@ class RemotePadScreen(
     private val onPinSubmit: (String) -> Unit,
     private val onVoiceRequest: () -> Unit,
 ) {
-    private lateinit var statusView: TextView
-    private lateinit var pinRow: LinearLayout
-    private lateinit var pinInput: EditText
-    private lateinit var padContainer: LinearLayout
+    private lateinit var searchingView: View
+    private lateinit var pinView: View
+    private lateinit var remoteView: View
+    private lateinit var stateLineText: TextView
+    private lateinit var statusText: TextView
+    private lateinit var pinSlots: List<View>
+    private lateinit var pinErrorText: TextView
     private lateinit var mouseOverlay: FrameLayout
+    private lateinit var keyboardOverlay: FrameLayout
+
+    private var pinEntry: String = ""
 
     fun createView(): View {
         val frame = FrameLayout(context).apply {
             setBackgroundColor(BG)
             fitsSystemWindows = true
         }
-        val scroll = ScrollView(context).apply {
-            isFillViewport = true
-            isVerticalScrollBarEnabled = false
-        }
-        val root = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(24), dp(16), dp(24), dp(20))
-        }
-        scroll.addView(root, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT
-        ))
-        frame.addView(scroll)
 
-        statusView = TextView(context).apply {
-            text = "Searching for SmartTV…"
-            setTextColor(Color.parseColor("#8E9AA6"))
-            textSize = 14f
-            gravity = Gravity.CENTER
-        }
-        root.addView(statusView, matchWrap())
+        searchingView = buildSearchingView()
+        pinView = buildPinView()
+        remoteView = buildRemoteView()
 
-        pinRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            visibility = View.GONE
-        }
-        pinInput = EditText(context).apply {
-            hint = "PIN on TV"
-            inputType = InputType.TYPE_CLASS_NUMBER
-            setTextColor(Color.WHITE)
-            setHintTextColor(Color.GRAY)
-            textSize = 22f
-            typeface = Typeface.MONOSPACE
-            minWidth = dp(140)
-        }
-        pinRow.addView(pinInput)
-        pinRow.addView(pillButton("Pair", dp(90)) { onPinSubmit(pinInput.text.toString().trim()) })
-        root.addView(pinRow, matchWrap(topMargin = dp(10)))
-
-        padContainer = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            alpha = 0.4f // dimmed until paired
-        }
-
-        // flexible space pushes the circle toward the vertical middle
-        padContainer.addView(Space(context), weightSpacer())
-
-        // NB: addView without params would still keep the pad's own
-        // LayoutParams; never pass wrap params here or the circle collapses.
-        padContainer.addView(buildCirclePad())
-        padContainer.addView(sectionLabel("swipe to move · tap to select"), matchWrap(topMargin = dp(12)))
-
-        padContainer.addView(
-            rowOf(
-                pillButton("‹ Back", dp(104)) { onCommand(RemoteCommand.Back) },
-                pillButton("⌂ Home", dp(104)) { onCommand(RemoteCommand.Home) },
-                pillButton("🖱", dp(64)) { showMouseMode(true) },
-            ),
-            wrapWrap(topMargin = dp(24))
-        )
-        padContainer.addView(
-            rowOf(
-                pillButton("Vol −", dp(104)) { onCommand(RemoteCommand.Volume("down")) },
-                pillButton("Vol +", dp(104)) { onCommand(RemoteCommand.Volume("up")) },
-                pillButton("🎤", dp(64)) { onVoiceRequest() },
-            ),
-            wrapWrap(topMargin = dp(10))
-        )
-
-        padContainer.addView(Space(context), weightSpacer())
-
-        padContainer.addView(buildKeyboardRow(), matchWrap(topMargin = dp(16)))
-
-        root.addView(padContainer, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
-        ))
+        frame.addView(searchingView, matchMatch())
+        frame.addView(pinView, matchMatch())
+        frame.addView(remoteView, matchMatch())
 
         mouseOverlay = buildMouseOverlay()
-        frame.addView(
-            mouseOverlay,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
-            )
-        )
+        frame.addView(mouseOverlay, matchMatch())
+        keyboardOverlay = buildKeyboardOverlay()
+        frame.addView(keyboardOverlay, matchMatch())
+
+        showScreen(Screen.SEARCHING)
         return frame
     }
 
-    // MARK: circle pad (navigation)
+    private enum class Screen { SEARCHING, PIN, REMOTE }
 
-    @SuppressLint("ClickableViewAccessibility")
-    private fun buildCirclePad(): View {
-        val size = dp(264)
-        val pad = FrameLayout(context).apply {
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(CARD)
-                setStroke(dp(2), Color.parseColor("#2E3944"))
-            }
-            layoutParams = LinearLayout.LayoutParams(size, size)
-        }
-        // Center "OK" button look (visual only; the whole circle is the touch surface).
-        pad.addView(
-            TextView(context).apply {
-                text = "OK"
-                setTextColor(Color.parseColor("#C6D0DA"))
-                textSize = 22f
-                gravity = Gravity.CENTER
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(Color.parseColor("#2C3641"))
-                }
-            },
-            FrameLayout.LayoutParams(dp(96), dp(96), Gravity.CENTER)
-        )
-        // Directional chevrons around the ring: real buttons, each a single
-        // tap = one Navigate(direction) step. Padding enlarges the touch
-        // target well past the glyph itself. Being individually clickable,
-        // each one consumes its own touch and never falls through to the
-        // pad's swipe/tap-to-select handling below.
-        fun chevron(symbol: String, direction: String, edgeGravity: Int, hMargin: Int, vMargin: Int) {
-            pad.addView(
-                TextView(context).apply {
-                    text = symbol
-                    setTextColor(Color.parseColor("#8A96A2"))
-                    textSize = 20f
-                    gravity = Gravity.CENTER
-                    isClickable = true
-                    background = StateListDrawable().apply {
-                        addState(intArrayOf(android.R.attr.state_pressed), roundedBg(CARD_PRESSED, dp(20)))
-                        addState(intArrayOf(), ColorDrawable(Color.TRANSPARENT))
-                    }
-                    setOnClickListener { onCommand(RemoteCommand.Navigate(direction)) }
-                },
-                FrameLayout.LayoutParams(dp(48), dp(48), edgeGravity).apply {
-                    setMargins(hMargin, vMargin, hMargin, vMargin)
-                }
-            )
-        }
-        chevron("▲", "up", Gravity.TOP or Gravity.CENTER_HORIZONTAL, 0, dp(8))
-        chevron("▼", "down", Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL, 0, dp(8))
-        chevron("◀", "left", Gravity.START or Gravity.CENTER_VERTICAL, dp(8), 0)
-        chevron("▶", "right", Gravity.END or Gravity.CENTER_VERTICAL, dp(8), 0)
-        val step = dp(70).toFloat() // finger travel per navigation step
-        val slop = ViewConfiguration.get(context).scaledTouchSlop
-        var startX = 0f; var startY = 0f
-        var stepped = false
-        var downTime = 0L
-        pad.setOnTouchListener { view, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    view.parent.requestDisallowInterceptTouchEvent(true)
-                    startX = event.x; startY = event.y
-                    stepped = false
-                    downTime = event.eventTime
-                    true
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    val dx = event.x - startX
-                    val dy = event.y - startY
-                    // Each `step` of travel in the dominant axis fires one
-                    // discrete navigate and re-anchors, so a long swipe can
-                    // step several tiles.
-                    if (abs(dx) >= step || abs(dy) >= step) {
-                        val direction = if (abs(dx) > abs(dy)) {
-                            if (dx > 0) "right" else "left"
-                        } else {
-                            if (dy > 0) "down" else "up"
-                        }
-                        onCommand(RemoteCommand.Navigate(direction))
-                        stepped = true
-                        startX = event.x; startY = event.y
-                    }
-                    true
-                }
-                MotionEvent.ACTION_UP -> {
-                    val moved = abs(event.x - startX) > slop || abs(event.y - startY) > slop
-                    if (!stepped && !moved && event.eventTime - downTime < TAP_TIMEOUT_MS) {
-                        onCommand(RemoteCommand.Select)
-                    }
-                    true
-                }
-                else -> true
-            }
-        }
-        return pad
+    private fun showScreen(screen: Screen) {
+        searchingView.visibility = if (screen == Screen.SEARCHING) View.VISIBLE else View.GONE
+        pinView.visibility = if (screen == Screen.PIN) View.VISIBLE else View.GONE
+        remoteView.visibility = if (screen == Screen.REMOTE) View.VISIBLE else View.GONE
     }
 
-    // MARK: full-screen mouse mode
+    // MARK: - Searching screen (pre-discovery; not part of the source design)
 
-    @SuppressLint("ClickableViewAccessibility")
-    private fun buildMouseOverlay(): FrameLayout {
-        val overlay = FrameLayout(context).apply {
-            setBackgroundColor(Color.parseColor("#F20B0E12"))
-            visibility = View.GONE
-        }
-        val hint = TextView(context).apply {
-            text = "Mouse mode\n\nmove finger = cursor\ntap = click\ntwo fingers = scroll"
-            setTextColor(Color.parseColor("#5A646E"))
+    private fun buildSearchingView(): View {
+        statusText = TextView(context).apply {
+            text = "Searching for SmartTV…"
+            setTextColor(TEXT_SECONDARY)
             textSize = 15f
             gravity = Gravity.CENTER
         }
-        overlay.addView(
-            hint,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.CENTER
-            )
-        )
-        val exit = pillButton("✕ Exit mouse", dp(150)) { showMouseMode(false) }
-        overlay.addView(
-            exit,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-            ).apply { setMargins(0, 0, 0, dp(48)) }
+        return FrameLayout(context).apply {
+            addView(statusText, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER
+            ))
+        }
+    }
+
+    // MARK: - PIN entry screen
+
+    private fun buildPinView(): View {
+        val root = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(28), dp(48), dp(28), dp(28))
+        }
+
+        root.addView(TextView(context).apply {
+            text = "Enter PIN"
+            setTextColor(TEXT_PRIMARY)
+            textSize = 20f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        }, matchWrap(bottomMargin = dp(4)))
+
+        root.addView(TextView(context).apply {
+            text = "Shown on your SmartTV screen"
+            setTextColor(TEXT_SECONDARY)
+            textSize = 13f
+        }, matchWrap(bottomMargin = dp(20)))
+
+        val slotsRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        pinSlots = (0 until 4).map {
+            View(context).apply {
+                background = roundedBg(PIN_SLOT_EMPTY, dp(8))
+                layoutParams = LinearLayout.LayoutParams(dp(44), dp(52)).apply {
+                    setMargins(dp(6), 0, dp(6), 0)
+                }
+            }
+        }
+        pinSlots.forEach { slotsRow.addView(it) }
+        root.addView(slotsRow, matchWrap(bottomMargin = dp(16)))
+
+        pinErrorText = TextView(context).apply {
+            text = "Incorrect PIN — try again"
+            setTextColor(ERROR)
+            textSize = 13f
+            gravity = Gravity.CENTER
+            visibility = View.INVISIBLE
+        }
+        root.addView(pinErrorText, matchWrap(bottomMargin = dp(8)))
+
+        val keypad = android.widget.GridLayout(context).apply {
+            columnCount = 3
+            rowCount = 4
+        }
+        val labels = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "OK")
+        labels.forEachIndexed { index, label ->
+            val cell = TextView(context).apply {
+                text = label
+                setTextColor(TEXT_PRIMARY)
+                textSize = 19f
+                gravity = Gravity.CENTER
+                isClickable = true
+                background = StateListDrawable().apply {
+                    addState(intArrayOf(android.R.attr.state_pressed), roundedBg(KEYPAD_PRESSED, dp(12)))
+                    addState(intArrayOf(), roundedBg(KEYPAD_BG, dp(12)))
+                }
+                setOnClickListener {
+                    when (label) {
+                        "⌫" -> clearPinDigit()
+                        "OK" -> submitPin()
+                        else -> addPinDigit(label)
+                    }
+                }
+            }
+            val params = android.widget.GridLayout.LayoutParams(
+                android.widget.GridLayout.spec(index / 3, 1f),
+                android.widget.GridLayout.spec(index % 3, 1f)
+            ).apply {
+                width = 0
+                height = dp(58)
+                setMargins(dp(5), dp(5), dp(5), dp(5))
+            }
+            keypad.addView(cell, params)
+        }
+        root.addView(keypad, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ))
+
+        return root
+    }
+
+    private fun addPinDigit(digit: String) {
+        if (pinEntry.length >= 4) return
+        pinEntry += digit
+        pinErrorText.visibility = View.INVISIBLE
+        updatePinSlots()
+        if (pinEntry.length == 4) submitPin()
+    }
+
+    private fun clearPinDigit() {
+        if (pinEntry.isEmpty()) return
+        pinEntry = pinEntry.dropLast(1)
+        pinErrorText.visibility = View.INVISIBLE
+        updatePinSlots()
+    }
+
+    private fun submitPin() {
+        if (pinEntry.isEmpty()) return
+        onPinSubmit(pinEntry)
+    }
+
+    private fun updatePinSlots() {
+        pinSlots.forEachIndexed { i, slot ->
+            slot.background = roundedBg(if (i < pinEntry.length) ACCENT else PIN_SLOT_EMPTY, dp(8))
+        }
+    }
+
+    // MARK: - Paired remote screen
+
+    private fun buildRemoteView(): View {
+        val scroll = ScrollView(context).apply { isFillViewport = true }
+        val root = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(20), dp(24), dp(20), dp(20))
+        }
+        scroll.addView(root, matchMatch())
+
+        stateLineText = TextView(context).apply {
+            text = "TV: grid"
+            setTextColor(TEXT_SECONDARY)
+            textSize = 12f
+            gravity = Gravity.CENTER
+            background = roundedBg(PILL_BG, dp(10))
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+        }
+        root.addView(stateLineText, matchWrap(bottomMargin = dp(16)))
+
+        val body = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(BODY_TOP, BODY_BOTTOM)
+            ).apply { cornerRadius = dp(28).toFloat() }
+            setPadding(dp(16), dp(28), dp(16), dp(32))
+        }
+
+        // Mic
+        body.addView(circleButton("🎤", dp(52), MIC_BG) { onVoiceRequest() }, wrapWrap(bottomMargin = dp(28)))
+
+        // D-pad ring
+        body.addView(buildDpadRing(), wrapWrap(bottomMargin = dp(28)))
+
+        // Back / Home
+        body.addView(
+            rowOf(
+                iconLabelButton("◀◀", "BACK") { onCommand(RemoteCommand.Back) },
+                iconLabelButton("⌂", "HOME") { onCommand(RemoteCommand.Home) },
+            ).apply { (this as LinearLayout).let {} },
+            wrapWrap(bottomMargin = dp(24))
         )
 
-        val slop = ViewConfiguration.get(context).scaledTouchSlop
+        // Skip back/forward (real seek, replacing the mockup's decorative row)
+        body.addView(
+            rowOf(
+                smallGlyphButton("⏮") { onCommand(RemoteCommand.Seek("back")) },
+                smallGlyphButton("⏭") { onCommand(RemoteCommand.Seek("forward")) },
+            ),
+            wrapWrap(bottomMargin = dp(20))
+        )
+
+        // Volume rocker
+        body.addView(buildVolumeRocker(), wrapWrap())
+
+        root.addView(body, matchWrap())
+
+        // Slim utility row: mouse mode + keyboard (real features, not in the
+        // original design, kept accessible without disrupting its layout).
+        root.addView(
+            rowOf(
+                utilityButton("🖱 Mouse") { mouseOverlay.visibility = View.VISIBLE },
+                utilityButton("⌨ Keyboard") { keyboardOverlay.visibility = View.VISIBLE },
+            ),
+            wrapWrap(topMargin = dp(18))
+        )
+
+        return scroll
+    }
+
+    private fun buildDpadRing(): View {
+        val ringSize = dp(210)
+        val armSize = dp(56)
+        val centerSize = dp(84)
+        val armOffset = dp(76) // distance from ring edge to the perpendicular edge of up/down/left/right arms
+        val centerOffset = dp(63)
+
+        val ring = FrameLayout(context).apply {
+            layoutParams = LinearLayout.LayoutParams(ringSize, ringSize)
+        }
+
+        fun arm(symbol: String, edgeGravity: Int, width: Int, height: Int, radii: FloatArray, direction: String) {
+            ring.addView(
+                TextView(context).apply {
+                    text = symbol
+                    setTextColor(TEXT_SECONDARY)
+                    textSize = 15f
+                    gravity = Gravity.CENTER
+                    isClickable = true
+                    background = StateListDrawable().apply {
+                        addState(intArrayOf(android.R.attr.state_pressed), GradientDrawable().apply { setColor(BUTTON_PRESSED); cornerRadii = radii })
+                        addState(intArrayOf(), GradientDrawable().apply { setColor(BUTTON_BG); cornerRadii = radii })
+                    }
+                    setOnClickListener { onCommand(RemoteCommand.Navigate(direction)) }
+                },
+                FrameLayout.LayoutParams(width, height, edgeGravity)
+            )
+        }
+
+        val r = dp(20).toFloat()
+        val sharp = 0f
+        // top: rounded top corners only
+        arm("▲", Gravity.TOP or Gravity.CENTER_HORIZONTAL, armSize, armSize,
+            floatArrayOf(r, r, r, r, sharp, sharp, sharp, sharp), "up")
+        // bottom: rounded bottom corners only
+        arm("▼", Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL, armSize, armSize,
+            floatArrayOf(sharp, sharp, sharp, sharp, r, r, r, r), "down")
+        // left: rounded left corners only
+        arm("◀", Gravity.START or Gravity.CENTER_VERTICAL, armSize, armSize,
+            floatArrayOf(r, r, sharp, sharp, sharp, sharp, r, r), "left")
+        // right: rounded right corners only
+        arm("▶", Gravity.END or Gravity.CENTER_VERTICAL, armSize, armSize,
+            floatArrayOf(sharp, sharp, r, r, r, r, sharp, sharp), "right")
+
+        ring.addView(
+            TextView(context).apply {
+                text = "SELECT"
+                setTextColor(Color.WHITE)
+                textSize = 11f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                gravity = Gravity.CENTER
+                isClickable = true
+                background = StateListDrawable().apply {
+                    addState(intArrayOf(android.R.attr.state_pressed), ovalBg(ACCENT_PRESSED))
+                    addState(intArrayOf(), ovalBg(ACCENT))
+                }
+                setOnClickListener { onCommand(RemoteCommand.Select) }
+            },
+            FrameLayout.LayoutParams(centerSize, centerSize, Gravity.CENTER)
+        )
+
+        return ring
+    }
+
+    private fun buildVolumeRocker(): View {
+        val rocker = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            background = roundedBg(MIC_BG, dp(24))
+        }
+        rocker.addView(volumeRockerButton("+") { onCommand(RemoteCommand.Volume("up")) })
+        rocker.addView(View(context).apply {
+            setBackgroundColor(Color.parseColor("#22FFFFFF"))
+            layoutParams = LinearLayout.LayoutParams(dp(30), dp(1))
+        })
+        rocker.addView(volumeRockerButton("−") { onCommand(RemoteCommand.Volume("down")) })
+        return rocker
+    }
+
+    private fun volumeRockerButton(label: String, onClick: () -> Unit): TextView {
+        return TextView(context).apply {
+            text = label
+            setTextColor(TEXT_SECONDARY)
+            textSize = 20f
+            gravity = Gravity.CENTER
+            isClickable = true
+            setOnClickListener { onClick() }
+            layoutParams = LinearLayout.LayoutParams(dp(44), dp(44))
+        }
+    }
+
+    private fun iconLabelButton(icon: String, label: String, onClick: () -> Unit): LinearLayout {
+        return LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            isClickable = true
+            background = StateListDrawable().apply {
+                addState(intArrayOf(android.R.attr.state_pressed), roundedBg(BUTTON_PRESSED, dp(16)))
+                addState(intArrayOf(), roundedBg(BUTTON_BG, dp(16)))
+            }
+            setOnClickListener { onClick() }
+            layoutParams = LinearLayout.LayoutParams(dp(74), dp(64)).apply {
+                setMargins(dp(14), 0, dp(14), 0)
+            }
+            addView(TextView(context).apply {
+                text = icon
+                setTextColor(TEXT_SECONDARY)
+                textSize = 16f
+                gravity = Gravity.CENTER
+            })
+            addView(TextView(context).apply {
+                text = label
+                setTextColor(TEXT_SECONDARY)
+                textSize = 9f
+                letterSpacing = 0.06f
+                gravity = Gravity.CENTER
+            })
+        }
+    }
+
+    private fun smallGlyphButton(symbol: String, onClick: () -> Unit): TextView {
+        return TextView(context).apply {
+            text = symbol
+            setTextColor(TEXT_SECONDARY)
+            textSize = 18f
+            gravity = Gravity.CENTER
+            isClickable = true
+            setOnClickListener { onClick() }
+            layoutParams = LinearLayout.LayoutParams(dp(52), dp(44)).apply {
+                setMargins(dp(10), 0, dp(10), 0)
+            }
+        }
+    }
+
+    private fun circleButton(label: String, size: Int, bg: Int, onClick: () -> Unit): TextView {
+        return TextView(context).apply {
+            text = label
+            textSize = 17f
+            gravity = Gravity.CENTER
+            isClickable = true
+            background = ovalBg(bg)
+            setOnClickListener { onClick() }
+            layoutParams = LinearLayout.LayoutParams(size, size)
+        }
+    }
+
+    private fun utilityButton(label: String, onClick: () -> Unit): TextView {
+        return TextView(context).apply {
+            text = label
+            setTextColor(TEXT_SECONDARY)
+            textSize = 13f
+            gravity = Gravity.CENTER
+            isClickable = true
+            background = StateListDrawable().apply {
+                addState(intArrayOf(android.R.attr.state_pressed), roundedBg(BUTTON_PRESSED, dp(12)))
+                addState(intArrayOf(), roundedBg(PILL_BG, dp(12)))
+            }
+            setOnClickListener { onClick() }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(40)).apply {
+                setMargins(dp(6), 0, dp(6), 0)
+                leftMargin = dp(6); rightMargin = dp(6)
+            }
+            setPadding(dp(14), 0, dp(14), 0)
+        }
+    }
+
+    // MARK: mouse mode overlay (unchanged behavior, restyled to match palette)
+
+    private fun buildMouseOverlay(): FrameLayout {
+        val overlay = FrameLayout(context).apply {
+            setBackgroundColor(Color.parseColor("#F2101418"))
+            visibility = View.GONE
+        }
+        overlay.addView(
+            TextView(context).apply {
+                text = "Mouse mode\n\nmove finger = cursor\ntap = click\ntwo fingers = scroll"
+                setTextColor(TEXT_SECONDARY)
+                textSize = 15f
+                gravity = Gravity.CENTER
+            },
+            FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
+        )
+        overlay.addView(
+            utilityButton("✕ Exit mouse mode") { overlay.visibility = View.GONE },
+            FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
+                .apply { setMargins(0, 0, 0, dp(48)) }
+        )
+        installTrackpadTouch(overlay)
+        return overlay
+    }
+
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
+    private fun installTrackpadTouch(overlay: FrameLayout) {
+        val slop = android.view.ViewConfiguration.get(context).scaledTouchSlop
         var lastX = 0f; var lastY = 0f
         var moved = false; var scrolling = false
         var downTime = 0L
         overlay.setOnTouchListener { _, event ->
             when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    lastX = event.x; lastY = event.y
-                    moved = false; scrolling = false
-                    downTime = event.eventTime
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    lastX = event.x; lastY = event.y; moved = false; scrolling = false; downTime = event.eventTime
                     true
                 }
-                MotionEvent.ACTION_POINTER_DOWN -> { scrolling = true; true }
-                MotionEvent.ACTION_MOVE -> {
+                android.view.MotionEvent.ACTION_POINTER_DOWN -> { scrolling = true; true }
+                android.view.MotionEvent.ACTION_MOVE -> {
                     val dx = event.x - lastX
                     val dy = event.y - lastY
-                    if (!moved && (abs(dx) > slop || abs(dy) > slop)) moved = true
+                    if (!moved && (kotlin.math.abs(dx) > slop || kotlin.math.abs(dy) > slop)) moved = true
                     if (moved) {
-                        if (scrolling) {
-                            onCommand(RemoteCommand.Scroll(dy * SCROLL_SPEED))
-                        } else {
-                            onCommand(RemoteCommand.PointerMove(dx * CURSOR_SPEED, dy * CURSOR_SPEED))
-                        }
+                        if (scrolling) onCommand(RemoteCommand.Scroll(dy * 1.2f))
+                        else onCommand(RemoteCommand.PointerMove(dx * 1.8f, dy * 1.8f))
                         lastX = event.x; lastY = event.y
                     }
                     true
                 }
-                MotionEvent.ACTION_UP -> {
-                    if (!moved && !scrolling && event.eventTime - downTime < TAP_TIMEOUT_MS) {
-                        onCommand(RemoteCommand.PointerClick)
-                    }
+                android.view.MotionEvent.ACTION_UP -> {
+                    if (!moved && !scrolling && event.eventTime - downTime < 250) onCommand(RemoteCommand.PointerClick)
                     true
                 }
                 else -> true
             }
         }
+    }
+
+    // MARK: keyboard overlay (unchanged behavior, restyled)
+
+    private fun buildKeyboardOverlay(): FrameLayout {
+        val overlay = FrameLayout(context).apply {
+            setBackgroundColor(Color.parseColor("#F2101418"))
+            visibility = View.GONE
+        }
+        val column = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+        }
+        val input = android.widget.EditText(context).apply {
+            hint = "Type on TV…"
+            setTextColor(Color.WHITE)
+            setHintTextColor(TEXT_SECONDARY)
+            background = roundedBg(BUTTON_BG, dp(12))
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            layoutParams = LinearLayout.LayoutParams(dp(240), LinearLayout.LayoutParams.WRAP_CONTENT)
+        }
+        column.addView(input, matchWrap(bottomMargin = dp(12)))
+        column.addView(rowOf(
+            utilityButton("Send") {
+                val text = input.text.toString()
+                if (text.isNotEmpty()) { onCommand(RemoteCommand.Text(text)); input.text.clear() }
+            },
+            utilityButton("⌫") { onCommand(RemoteCommand.Key("backspace")) },
+            utilityButton("⏎") { onCommand(RemoteCommand.Key("return")) },
+        ))
+        column.addView(utilityButton("✕ Close") { overlay.visibility = View.GONE }, wrapWrap(topMargin = dp(16)))
+        overlay.addView(column, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
         return overlay
     }
 
-    private fun showMouseMode(show: Boolean) {
-        mouseOverlay.visibility = if (show) View.VISIBLE else View.GONE
-    }
-
-    // MARK: keyboard row
-
-    private fun buildKeyboardRow(): LinearLayout {
-        val input = EditText(context).apply {
-            hint = "Type on TV…"
-            inputType = InputType.TYPE_CLASS_TEXT
-            setTextColor(Color.WHITE)
-            setHintTextColor(Color.GRAY)
-            textSize = 15f
-            background = roundedBg(CARD)
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        val row = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        row.addView(input)
-        row.addView(pillButton("Send", dp(72)) {
-            val text = input.text.toString()
-            if (text.isNotEmpty()) {
-                onCommand(RemoteCommand.Text(text))
-                input.text.clear()
-            }
-        })
-        row.addView(pillButton("⌫", dp(52)) { onCommand(RemoteCommand.Key("backspace")) })
-        row.addView(pillButton("⏎", dp(52)) { onCommand(RemoteCommand.Key("return")) })
-        return row
-    }
-
-    // MARK: state updates (main thread)
+    // MARK: - State updates (main thread)
 
     fun setStatus(text: String) {
-        statusView.text = text
+        statusText.text = text
+        showScreen(Screen.SEARCHING)
     }
 
     fun showPinEntry(show: Boolean) {
-        pinRow.visibility = if (show) View.VISIBLE else View.GONE
-        if (show) pinInput.text.clear()
+        if (show) {
+            pinEntry = ""
+            updatePinSlots()
+            pinErrorText.visibility = View.INVISIBLE
+            showScreen(Screen.PIN)
+        }
+    }
+
+    fun showPinError() {
+        pinEntry = ""
+        updatePinSlots()
+        pinErrorText.visibility = View.VISIBLE
+    }
+
+    fun showPaired() {
+        showScreen(Screen.REMOTE)
+    }
+
+    fun setStateLine(text: String) {
+        stateLineText.text = text
     }
 
     fun setControlsEnabled(enabled: Boolean) {
-        val target = if (enabled) 1.0f else 0.4f
-        if (padContainer.alpha != target) {
-            padContainer.animate().alpha(target).setDuration(250).start()
-        }
-        if (!enabled) showMouseMode(false)
-    }
-
-    // MARK: helpers
-
-    /// Rounded dark "remote button": flat TextView with a pressed state,
-    /// instead of the boxy platform Button style.
-    private fun pillButton(label: String, width: Int, onClick: () -> Unit): TextView {
-        return TextView(context).apply {
-            text = label
-            setTextColor(Color.WHITE)
-            textSize = 15f
-            gravity = Gravity.CENTER
-            background = StateListDrawable().apply {
-                addState(intArrayOf(android.R.attr.state_pressed), roundedBg(CARD_PRESSED))
-                addState(intArrayOf(), roundedBg(CARD))
-            }
-            isClickable = true
-            setOnClickListener { onClick() }
-            layoutParams = LinearLayout.LayoutParams(width, dp(48)).apply {
-                setMargins(dp(5), dp(4), dp(5), dp(4))
-            }
+        remoteView.alpha = if (enabled) 1.0f else 0.4f
+        if (!enabled) {
+            mouseOverlay.visibility = View.GONE
+            keyboardOverlay.visibility = View.GONE
         }
     }
 
-    private fun roundedBg(color: Int, cornerRadiusPx: Int = dp(14)): GradientDrawable =
-        GradientDrawable().apply {
-            setColor(color)
-            cornerRadius = cornerRadiusPx.toFloat()
-        }
+    // MARK: - helpers
 
-    private fun rowOf(vararg views: View): LinearLayout {
-        return LinearLayout(context).apply {
+    private fun roundedBg(color: Int, cornerRadiusPx: Int): GradientDrawable =
+        GradientDrawable().apply { setColor(color); cornerRadius = cornerRadiusPx.toFloat() }
+
+    private fun ovalBg(color: Int): GradientDrawable =
+        GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(color) }
+
+    private fun rowOf(vararg views: View): LinearLayout =
+        LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             views.forEach { addView(it) }
         }
-    }
 
-    private fun sectionLabel(text: String): TextView {
-        return TextView(context).apply {
-            this.text = text
-            setTextColor(Color.parseColor("#5A646E"))
-            textSize = 12f
-            gravity = Gravity.CENTER
+    private fun matchMatch() = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+
+    private fun matchWrap(topMargin: Int = 0, bottomMargin: Int = 0) =
+        LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            this.topMargin = topMargin; this.bottomMargin = bottomMargin
         }
-    }
 
-    private fun matchWrap(topMargin: Int = 0) =
-        LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { this.topMargin = topMargin }
+    private fun wrapWrap(topMargin: Int = 0, bottomMargin: Int = 0) =
+        LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            this.topMargin = topMargin; this.bottomMargin = bottomMargin
+        }
 
-    private fun wrapWrap(topMargin: Int = 0) =
-        LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { this.topMargin = topMargin }
-
-    private fun weightSpacer() =
-        LinearLayout.LayoutParams(0, 0, 1f)
-
-    private fun dp(value: Int): Int =
-        (value * context.resources.displayMetrics.density).toInt()
+    private fun dp(value: Int): Int = (value * context.resources.displayMetrics.density).toInt()
 
     companion object {
         private val BG = Color.parseColor("#101418")
-        private val CARD = Color.parseColor("#232B34")
-        private val CARD_PRESSED = Color.parseColor("#33404D")
-        private const val CURSOR_SPEED = 1.8f
-        private const val SCROLL_SPEED = 1.2f
-        private const val TAP_TIMEOUT_MS = 250L
+        private val BODY_TOP = Color.parseColor("#2B2F36")
+        private val BODY_BOTTOM = Color.parseColor("#1C1F24")
+        private val BUTTON_BG = Color.parseColor("#383D46")
+        private val BUTTON_PRESSED = Color.parseColor("#454B55")
+        private val ACCENT = Color.parseColor("#5B5FEF")
+        private val ACCENT_PRESSED = Color.parseColor("#7075F5")
+        private val MIC_BG = Color.parseColor("#3D4249")
+        private val PILL_BG = Color.parseColor("#24272C")
+        private val KEYPAD_BG = Color.parseColor("#2C3038")
+        private val KEYPAD_PRESSED = Color.parseColor("#3A3F48")
+        private val PIN_SLOT_EMPTY = Color.parseColor("#2E323A")
+        private val TEXT_PRIMARY = Color.parseColor("#F1F2F4")
+        private val TEXT_SECONDARY = Color.parseColor("#ACB2B9")
+        private val ERROR = Color.parseColor("#E0523F")
     }
 }

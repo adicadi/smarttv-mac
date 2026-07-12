@@ -8,6 +8,9 @@ final class WebViewController: NSObject {
     /// Called with a human-readable message when a page fails to load or a
     /// <video> element reports a fatal error (typical DRM-failure signature).
     var onPlaybackError: ((String) -> Void)?
+    /// Called with `true` when the current service starts navigating, and
+    /// `false` once it finishes (or fails) loading.
+    var onLoadingChange: ((Bool) -> Void)?
 
     private var webViews: [String: WKWebView] = [:]
     private var current: WKWebView?
@@ -124,6 +127,24 @@ final class WebViewController: NSObject {
     })();
     """
 
+    /// Skips the active video back/forward 10s. Silently does nothing when
+    /// there's no same-origin <video> to seek (e.g. My Cinema's Vidking
+    /// iframe, or still browsing a page's own UI).
+    func seek(direction: String) {
+        let delta = direction == "back" ? -10 : 10
+        let js = """
+        (function() {
+          const videos = Array.from(document.querySelectorAll('video'));
+          if (videos.length === 0) return;
+          const target = videos.reduce(function(a, b) {
+            return (b.clientWidth * b.clientHeight) > (a.clientWidth * a.clientHeight) ? b : a;
+          });
+          target.currentTime = Math.max(0, target.currentTime + (\(delta)));
+        })();
+        """
+        current?.evaluateJavaScript(js, completionHandler: nil)
+    }
+
     /// Forwards remote d-pad navigation into the page as arrow-key events
     /// (drives cinema.html's focus model; many streaming UIs honor them too).
     func sendArrowKey(_ direction: MoveDirection) {
@@ -174,11 +195,21 @@ final class WebViewController: NSObject {
 }
 
 extension WebViewController: WKNavigationDelegate {
+    nonisolated func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        Task { @MainActor in self.onLoadingChange?(true) }
+    }
+
+    nonisolated func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        Task { @MainActor in self.onLoadingChange?(false) }
+    }
+
     nonisolated func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        Task { @MainActor in self.onLoadingChange?(false) }
         reportNavigationError(error)
     }
 
     nonisolated func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        Task { @MainActor in self.onLoadingChange?(false) }
         reportNavigationError(error)
     }
 

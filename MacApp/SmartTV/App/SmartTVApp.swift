@@ -29,6 +29,17 @@ final class AppState: ObservableObject {
     @Published var pairingPIN: String?
     /// Visible, non-fatal error (e.g. DRM playback failure).
     @Published var errorMessage: String?
+    /// True while the active service's page is still loading.
+    @Published var isLoadingService = false
+    /// Text driving the grid's real search-filter field. Resets focus so
+    /// stale positions from the unfiltered list can't be selected.
+    @Published var searchQuery = "" {
+        didSet { if searchQuery != oldValue { focusedIndex = 0 } }
+    }
+    @Published var volumeVisible = false
+    @Published var volumeLevel = 50
+
+    private var volumeHideWorkItem: DispatchWorkItem?
 
     /// Number of columns the grid renders; navigation math must match the layout.
     let gridColumns = 4
@@ -44,13 +55,46 @@ final class AppState: ObservableObject {
         webViewController.onPlaybackError = { [weak self] message in
             Task { @MainActor in
                 self?.errorMessage = message
+                self?.isLoadingService = false
+            }
+        }
+        webViewController.onLoadingChange = { [weak self] loading in
+            Task { @MainActor in
+                self?.isLoadingService = loading
             }
         }
     }
 
+    /// Services after the grid's search filter; empty query returns all.
+    /// Focus navigation and selection are always relative to this list, not
+    /// the unfiltered one, so a filtered-out tile can never be selected.
+    var filteredServices: [StreamingService] {
+        guard !searchQuery.isEmpty else { return services }
+        return services.filter { $0.name.localizedCaseInsensitiveContains(searchQuery) }
+    }
+
     var focusedService: StreamingService? {
-        guard services.indices.contains(focusedIndex) else { return nil }
-        return services[focusedIndex]
+        let list = filteredServices
+        guard list.indices.contains(focusedIndex) else { return nil }
+        return list[focusedIndex]
+    }
+
+    /// Stable, visually distinct accent hue (0-360) derived from a service's
+    /// id, used to color its tile and its "now loading" background.
+    func hue(for service: StreamingService) -> Double {
+        let hash = service.id.unicodeScalars.reduce(UInt32(5381)) { ($0 << 5) &+ $0 &+ $1.value }
+        return Double(hash % 360)
+    }
+
+    // MARK: - Volume HUD
+
+    func showVolumeHUD(level: Int) {
+        volumeLevel = level
+        volumeVisible = true
+        volumeHideWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in self?.volumeVisible = false }
+        volumeHideWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: workItem)
     }
 
     // MARK: - Discrete navigation (shared by keyboard and remote)
@@ -62,7 +106,8 @@ final class AppState: ObservableObject {
             webViewController.sendArrowKey(direction)
             return
         }
-        guard !services.isEmpty else { return }
+        let list = filteredServices
+        guard !list.isEmpty else { return }
         var index = focusedIndex
         switch direction {
         case .left: index -= 1
@@ -70,7 +115,7 @@ final class AppState: ObservableObject {
         case .up: index -= gridColumns
         case .down: index += gridColumns
         }
-        if services.indices.contains(index) {
+        if list.indices.contains(index) {
             focusedIndex = index
             notifyStateChange()
         }
@@ -105,6 +150,11 @@ final class AppState: ObservableObject {
             }
         }
         notifyStateChange()
+    }
+
+    func seek(direction: String) {
+        guard case .playing = screen else { return }
+        webViewController.seek(direction: direction)
     }
 
     func goHome() {

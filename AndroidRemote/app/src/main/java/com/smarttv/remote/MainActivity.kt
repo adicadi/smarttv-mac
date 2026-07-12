@@ -31,7 +31,6 @@ class MainActivity : Activity() {
             onCommand = { command -> socketClient.send(command) },
             onPinSubmit = { pin ->
                 if (pin.isNotEmpty()) {
-                    pad.setStatus("Pairing…")
                     socketClient.submitPin(pin)
                 }
             },
@@ -67,7 +66,7 @@ class MainActivity : Activity() {
                 ?.firstOrNull()
             if (!spoken.isNullOrEmpty()) {
                 socketClient.send(RemoteCommand.Text(spoken))
-                pad.setStatus("Sent: “$spoken”")
+                pad.setStateLine("Sent: “$spoken”")
             }
         }
     }
@@ -111,30 +110,27 @@ class MainActivity : Activity() {
         }
 
         override fun onPairingRequired() {
-            pad.setStatus("Enter the PIN shown on the TV")
             pad.showPinEntry(true)
             pad.setControlsEnabled(false)
         }
 
         override fun onPaired() {
-            pad.setStatus("Paired ✓")
-            pad.showPinEntry(false)
+            pad.showPaired()
             pad.setControlsEnabled(true)
         }
 
         override fun onPairingRejected() {
-            pad.setStatus("Wrong PIN — try again")
-            pad.showPinEntry(true)
+            pad.showPinError()
         }
 
         override fun onState(screen: String, serviceId: String?) {
             val focused: String = if (serviceId != null) " — focused: $serviceId" else ""
-            val status: String = when (screen) {
-                "grid" -> "TV: home$focused"
+            val line: String = when (screen) {
+                "grid" -> "TV: grid$focused"
                 "playing" -> "TV: playing ${serviceId ?: ""}"
                 else -> "TV: $screen"
             }
-            pad.setStatus(status)
+            pad.setStateLine(line)
         }
 
         override fun onDisconnected(reason: String) {

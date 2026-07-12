@@ -28,6 +28,8 @@ final class CommandRouter {
             appState.goHome()
         case "volume":
             adjustVolume(up: direction == "up")
+        case "seek":
+            if let direction { appState.seek(direction: direction) }
         case "pointer_move":
             movePointer(
                 dx: json["dx"] as? Double ?? 0,
@@ -54,19 +56,23 @@ final class CommandRouter {
 
     /// System output volume via AppleScript — streaming sites don't expose a
     /// controllable <video> volume from outside their own player chrome.
+    /// Reads the resulting level back so the TV can show a volume HUD.
     private func adjustVolume(up: Bool) {
         let delta = up ? 7 : -7
         let source = """
         set currentVolume to output volume of (get volume settings)
-        set volume output volume (currentVolume + (\(delta)))
+        set newVolume to currentVolume + (\(delta))
+        set volume output volume newVolume
+        return output volume of (get volume settings)
         """
-        if let script = NSAppleScript(source: source) {
-            var error: NSDictionary?
-            script.executeAndReturnError(&error)
-            if let error {
-                NSLog("Volume AppleScript failed: \(error)")
-            }
+        guard let script = NSAppleScript(source: source) else { return }
+        var error: NSDictionary?
+        let result = script.executeAndReturnError(&error)
+        if let error {
+            NSLog("Volume AppleScript failed: \(error)")
+            return
         }
+        appState.showVolumeHUD(level: Int(result.int32Value))
     }
 
     // MARK: - Pointer & keyboard injection (CGEvent)
