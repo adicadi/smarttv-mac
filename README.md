@@ -58,9 +58,21 @@ phone once, after that it reconnects silently.
   WebSocket, as allowed by the dependency policy).
 - **Beyond the v1 d-pad surface**, the remote also has a trackpad (one
   finger moves the Mac cursor, tap clicks, two fingers scroll), a keyboard
-  row, and voice input (speech-to-text sent as typed text). These inject
-  CGEvents on the Mac and need a one-time Accessibility permission grant
-  (System Settings → Privacy & Security → Accessibility → SmartTV).
+  row, a fullscreen toggle for the active `<video>`, and voice input
+  (speech-to-text). While YouTube is on screen, dictated speech is typed
+  straight into YouTube's own search box and submitted; on other services it
+  falls back to typing wherever OS keyboard focus already is. Trackpad,
+  keyboard and fallback voice input inject CGEvents on the Mac and need a
+  one-time Accessibility permission grant (System Settings → Privacy &
+  Security → Accessibility → SmartTV) — **note for local/unsigned dev
+  builds**: since each rebuild gets a new ad-hoc signature, this grant needs
+  to be removed and re-added after every rebuild, or the permission silently
+  doesn't apply to the newly-launched process.
+- **YouTube tile points at `youtube.com/tv`**, not the desktop site. It's
+  Google's own D-pad-navigable "Living Room" build, so remote arrow keys
+  drive real spatial navigation through YouTube's browse/search/
+  recommendations UI — the desktop site is mouse/scroll-first and mostly
+  ignores arrow keys outside the video player itself.
 - **`ContentView.swift` added** under `MacApp/SmartTV/App/` (root view that
   switches grid/web view and hosts PIN + error overlays).
 

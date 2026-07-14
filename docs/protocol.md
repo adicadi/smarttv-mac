@@ -34,15 +34,21 @@ and `AndroidRemote/.../connection/RemoteSocketClient.kt` (OkHttp WebSocket).
 { "type": "command", "action": "pointer_click" }
 { "type": "command", "action": "scroll", "dy": 40.0 }
 { "type": "command", "action": "text", "value": "stranger things" }
+{ "type": "command", "action": "voice_text", "value": "stranger things" }
 { "type": "command", "action": "key", "value": "return|backspace|space|escape" }
+{ "type": "command", "action": "seek", "direction": "back|forward" }
+{ "type": "command", "action": "fullscreen" }
 ```
 
 `pointer_move` deltas are in screen points. `text` types the string wherever
-keyboard focus is on the Mac (search fields etc.); voice capture on Android
-is speech-to-text delivered as a normal `text` command. Pointer, scroll,
-`text` and `key` are injected as system events (CGEvent) and require the
-SmartTV app to be granted **Accessibility** permission on the Mac — the first
-such command triggers the system prompt and shows a hint in the TV UI.
+keyboard focus is on the Mac (search fields etc.); `voice_text` is the same
+dictated-speech payload but tagged separately from `text` so the Mac can
+special-case it — currently, while YouTube is on screen it's typed into
+YouTube's own search box and submitted, otherwise it's handled exactly like
+`text`. Pointer, scroll, `text`, `voice_text` (fallback path) and `key` are
+injected as system events (CGEvent) and require the SmartTV app to be
+granted **Accessibility** permission on the Mac — the first such command
+triggers the system prompt and shows a hint in the TV UI.
 
 ## Mac → Android
 
@@ -62,15 +68,18 @@ succeeded.
 
 ## Semantics on the Mac
 
-| Command             | On grid                    | While playing                        |
-| ------------------- | --------------------------- | ------------------------------------- |
-| navigate            | moves tile focus            | synthetic arrow-key press into the page |
-| select              | opens focused service       | toggles play/pause on the active video[^select-fallback] |
-| back                | no-op                       | web-view back, or grid if no history  |
-| home                | no-op (already home)        | returns to grid (web view kept alive) |
-| volume              | system output volume ±7     | system output volume ±7               |
-| pointer_move/click  | moves/clicks system cursor  | moves/clicks system cursor            |
-| scroll              | scrolls under cursor        | scrolls under cursor                  |
-| text / key          | types into focused element  | types into focused element            |
+| Command            | On grid                    | While playing                                            |
+| ------------------ | -------------------------- | -------------------------------------------------------- |
+| navigate           | moves tile focus           | synthetic arrow-key press into the page                  |
+| select             | opens focused service      | toggles play/pause on the active video[^select-fallback] |
+| back               | no-op                      | web-view back, or grid if no history                     |
+| home               | no-op (already home)       | returns to grid (web view kept alive)                    |
+| volume             | system output volume ±7    | system output volume ±7                                  |
+| pointer_move/click | moves/clicks system cursor | moves/clicks system cursor                               |
+| scroll             | scrolls under cursor       | scrolls under cursor                                     |
+| text / key         | types into focused element | types into focused element                               |
+| voice_text         | types into focused element | YouTube: search box + submit; others: same as `text`     |
+| seek               | no-op (no video on grid)   | skips the active video ±10s                              |
+| fullscreen         | no-op (no video on grid)   | toggles fullscreen on the active video                   |
 
 [^select-fallback]: Falls back to a synthetic Enter keypress when there's no `<video>` element to toggle — e.g. still browsing a page's own UI (My Cinema's grid) or a site with no player on screen yet.
