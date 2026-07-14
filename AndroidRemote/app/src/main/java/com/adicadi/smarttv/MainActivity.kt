@@ -1,4 +1,4 @@
-package com.smarttv.remote
+package com.adicadi.smarttv
 
 import android.app.Activity
 import android.content.ActivityNotFoundException
@@ -6,10 +6,10 @@ import android.content.Intent
 import android.os.Bundle
 import android.speech.RecognizerIntent
 import android.widget.Toast
-import com.smarttv.remote.connection.RemoteSocketClient
-import com.smarttv.remote.discovery.BonjourDiscovery
-import com.smarttv.remote.model.RemoteCommand
-import com.smarttv.remote.ui.RemotePadScreen
+import com.adicadi.smarttv.connection.RemoteSocketClient
+import com.adicadi.smarttv.discovery.BonjourDiscovery
+import com.adicadi.smarttv.model.RemoteCommand
+import com.adicadi.smarttv.ui.RemotePadScreen
 
 class MainActivity : Activity() {
 

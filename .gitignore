@@ -11,3 +11,11 @@ AndroidRemote/**/build/
 AndroidRemote/.idea/
 *.apk
 *.iml
+
+# Release signing — never commit the keystore or its passwords.
+AndroidRemote/*.jks
+AndroidRemote/*.keystore
+AndroidRemote/keystore.properties
+
+# Release build output
+dist/

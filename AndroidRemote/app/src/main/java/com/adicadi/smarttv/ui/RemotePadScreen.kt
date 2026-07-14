@@ -1,4 +1,4 @@
-package com.smarttv.remote.ui
+package com.adicadi.smarttv.ui
 
 import android.content.Context
 import android.graphics.Color
@@ -10,7 +10,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import com.smarttv.remote.model.RemoteCommand
+import com.adicadi.smarttv.model.RemoteCommand
 
 /**
  * Remote control surface, following the "SmartTV Remote Prototype" design:

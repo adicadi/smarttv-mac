@@ -1,4 +1,4 @@
-package com.smarttv.remote.model
+package com.adicadi.smarttv.model
 
 import org.json.JSONObject
 

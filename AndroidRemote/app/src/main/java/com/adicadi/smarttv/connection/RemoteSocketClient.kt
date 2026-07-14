@@ -1,11 +1,11 @@
-package com.smarttv.remote.connection
+package com.adicadi.smarttv.connection
 
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import com.smarttv.remote.model.RemoteCommand
-import com.smarttv.remote.model.TvMessage
+import com.adicadi.smarttv.model.RemoteCommand
+import com.adicadi.smarttv.model.TvMessage
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response

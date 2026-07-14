@@ -1,4 +1,4 @@
-package com.smarttv.remote.discovery
+package com.adicadi.smarttv.discovery
 
 import android.content.Context
 import android.net.nsd.NsdManager
