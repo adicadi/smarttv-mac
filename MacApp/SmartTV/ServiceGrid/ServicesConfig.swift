@@ -34,7 +34,10 @@ final class ServicesConfig {
     }
 
     static let defaultServices: [StreamingService] = [
-        StreamingService(id: "youtube", name: "YouTube", url: URL(string: "https://www.youtube.com")!, icon: "play.rectangle.fill"),
+        // youtube.com/tv is Google's own D-pad-navigable "Living Room" build
+        // of YouTube (as used by real smart-TV YouTube apps), unlike the
+        // mouse/scroll-oriented desktop site.
+        StreamingService(id: "youtube", name: "YouTube", url: URL(string: "https://www.youtube.com/tv")!, icon: "play.rectangle.fill"),
         StreamingService(id: "netflix", name: "Netflix", url: URL(string: "https://www.netflix.com/browse")!, icon: "n.square.fill"),
         StreamingService(id: "primevideo", name: "Prime Video", url: URL(string: "https://www.primevideo.com")!, icon: "p.square.fill"),
         StreamingService(id: "appletv", name: "Apple TV+", url: URL(string: "https://tv.apple.com")!, icon: "appletv.fill"),

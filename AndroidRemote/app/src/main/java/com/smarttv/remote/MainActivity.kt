@@ -65,7 +65,7 @@ class MainActivity : Activity() {
                 ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
                 ?.firstOrNull()
             if (!spoken.isNullOrEmpty()) {
-                socketClient.send(RemoteCommand.Text(spoken))
+                socketClient.send(RemoteCommand.VoiceText(spoken))
                 pad.setStateLine("Sent: “$spoken”")
             }
         }

@@ -157,6 +157,26 @@ final class AppState: ObservableObject {
         webViewController.seek(direction: direction)
     }
 
+    func toggleFullscreen() {
+        guard case .playing = screen else { return }
+        webViewController.toggleFullscreen()
+    }
+
+    /// Services with their own in-page search UI that dictated speech should
+    /// be typed into directly, rather than falling back to OS-level keystrokes
+    /// wherever focus happens to be.
+    private static let inPageVoiceSearchServiceIDs: Set<String> = ["youtube"]
+
+    /// Routes mic dictation: into YouTube's own search box when it's on
+    /// screen, otherwise `fallback` (OS-level typing wherever focus is).
+    func handleVoiceText(_ text: String, fallback: (String) -> Void) {
+        if case .playing(let service) = screen, Self.inPageVoiceSearchServiceIDs.contains(service.id) {
+            webViewController.youTubeVoiceSearch(text)
+        } else {
+            fallback(text)
+        }
+    }
+
     func goHome() {
         // The web view keeps running behind the grid (so a service can
         // resume where it left off), but its media must not keep

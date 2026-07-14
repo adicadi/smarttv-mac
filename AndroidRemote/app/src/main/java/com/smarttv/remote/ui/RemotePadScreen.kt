@@ -232,14 +232,19 @@ class RemotePadScreen(
         // Mic
         body.addView(circleButton("🎤", dp(52), MIC_BG) { onVoiceRequest() }, wrapWrap(bottomMargin = dp(28)))
 
-        // D-pad ring
-        body.addView(buildDpadRing(), wrapWrap(bottomMargin = dp(28)))
+        // D-pad ring (fixed-size square; addView(view, params) would clobber
+        // the ring's own LinearLayout.LayoutParams size, so set the margin on
+        // the params it already carries instead of passing a replacement).
+        val dpadRing = buildDpadRing()
+        (dpadRing.layoutParams as LinearLayout.LayoutParams).bottomMargin = dp(28)
+        body.addView(dpadRing)
 
-        // Back / Home
+        // Back / Home / Fullscreen
         body.addView(
             rowOf(
                 iconLabelButton("◀◀", "BACK") { onCommand(RemoteCommand.Back) },
                 iconLabelButton("⌂", "HOME") { onCommand(RemoteCommand.Home) },
+                iconLabelButton("⛶", "FULL") { onCommand(RemoteCommand.Fullscreen) },
             ).apply { (this as LinearLayout).let {} },
             wrapWrap(bottomMargin = dp(24))
         )

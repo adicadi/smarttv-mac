@@ -30,6 +30,8 @@ final class CommandRouter {
             adjustVolume(up: direction == "up")
         case "seek":
             if let direction { appState.seek(direction: direction) }
+        case "fullscreen":
+            appState.toggleFullscreen()
         case "pointer_move":
             movePointer(
                 dx: json["dx"] as? Double ?? 0,
@@ -42,6 +44,12 @@ final class CommandRouter {
         case "text":
             if let value = json["value"] as? String, !value.isEmpty {
                 typeText(value)
+            }
+        case "voice_text":
+            if let value = json["value"] as? String, !value.isEmpty {
+                appState.handleVoiceText(value) { [weak self] fallbackText in
+                    self?.typeText(fallbackText)
+                }
             }
         case "key":
             if let value = json["value"] as? String {

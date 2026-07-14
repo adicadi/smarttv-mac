@@ -145,6 +145,25 @@ final class WebViewController: NSObject {
         current?.evaluateJavaScript(js, completionHandler: nil)
     }
 
+    /// Toggles fullscreen on the active <video> (or exits fullscreen if the
+    /// page is already showing one). Same same-origin caveat as
+    /// togglePlayPauseOrSelect: a cross-origin embed's video can't be reached.
+    func toggleFullscreen() {
+        current?.evaluateJavaScript(Self.toggleFullscreenJS, completionHandler: nil)
+    }
+
+    private static let toggleFullscreenJS = """
+    (function() {
+      if (document.fullscreenElement) { document.exitFullscreen(); return; }
+      const videos = Array.from(document.querySelectorAll('video'));
+      if (videos.length === 0) return;
+      const target = videos.reduce(function(a, b) {
+        return (b.clientWidth * b.clientHeight) > (a.clientWidth * a.clientHeight) ? b : a;
+      });
+      target.requestFullscreen();
+    })();
+    """
+
     /// Forwards remote d-pad navigation into the page as arrow-key events
     /// (drives cinema.html's focus model; many streaming UIs honor them too).
     func sendArrowKey(_ direction: MoveDirection) {
@@ -166,6 +185,38 @@ final class WebViewController: NSObject {
           for (const type of ['keydown', 'keyup']) {
             t.dispatchEvent(new KeyboardEvent(type, {key: '\(key)', code: '\(code)', keyCode: \(keyCode), which: \(keyCode), bubbles: true}));
           }
+        })();
+        """
+        current?.evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    /// Best-effort: focuses YouTube's search box (clicking the search icon
+    /// first if the "Living Room" TV UI has it hidden) and submits `text` as
+    /// a search. YouTube's DOM/class names aren't a stable public API, so
+    /// this tries a few known selectors — including the "ytlr-" prefix used
+    /// by youtube.com/tv's web components — and silently no-ops if none of
+    /// them match (e.g. after a YouTube redesign).
+    func youTubeVoiceSearch(_ text: String) {
+        guard let payload = try? JSONEncoder().encode(text),
+              let jsString = String(data: payload, encoding: .utf8) else { return }
+        let js = """
+        (function() {
+          const text = \(jsString);
+          const selector = 'input[name="search_query"], input[type="search"], ytlr-text-box input, [role="searchbox"] input';
+          function submit(input) {
+            const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+            setter.call(input, text);
+            input.dispatchEvent(new Event('input', {bubbles: true}));
+            input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true}));
+          }
+          const existing = document.querySelector(selector);
+          if (existing) { existing.focus(); submit(existing); return; }
+          const trigger = document.querySelector('[aria-label="Search" i], button[aria-label*="search" i], ytlr-search-container, tp-yt-paper-icon-button#search-icon, #search-icon-legacy');
+          if (trigger) { trigger.click(); }
+          setTimeout(function() {
+            const input = document.querySelector(selector);
+            if (input) { input.focus(); submit(input); }
+          }, 400);
         })();
         """
         current?.evaluateJavaScript(js, completionHandler: nil)

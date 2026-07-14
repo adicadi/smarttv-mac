@@ -19,10 +19,16 @@ sealed class RemoteCommand {
     object PointerClick : RemoteCommand()
     data class Scroll(val dy: Float) : RemoteCommand()
     data class Text(val value: String) : RemoteCommand()
+    /** Dictated speech from the mic button — services with their own search
+     *  UI (e.g. YouTube) get it typed into that search box; others fall back
+     *  to typing wherever the OS focus already is, same as [Text]. */
+    data class VoiceText(val value: String) : RemoteCommand()
     /** Special key: "return", "backspace", "space", "escape". */
     data class Key(val value: String) : RemoteCommand()
     /** Skip back/forward 10s on the active video. Direction: "back" | "forward". */
     data class Seek(val direction: String) : RemoteCommand()
+    /** Toggles the active <video> element's fullscreen state. */
+    object Fullscreen : RemoteCommand()
 
     fun toJson(): String {
         val json = JSONObject()
@@ -40,8 +46,10 @@ sealed class RemoteCommand {
             is PointerClick -> json.put("type", "command").put("action", "pointer_click")
             is Scroll -> json.put("type", "command").put("action", "scroll").put("dy", dy.toDouble())
             is Text -> json.put("type", "command").put("action", "text").put("value", value)
+            is VoiceText -> json.put("type", "command").put("action", "voice_text").put("value", value)
             is Key -> json.put("type", "command").put("action", "key").put("value", value)
             is Seek -> json.put("type", "command").put("action", "seek").put("direction", direction)
+            is Fullscreen -> json.put("type", "command").put("action", "fullscreen")
         }
         return json.toString()
     }
